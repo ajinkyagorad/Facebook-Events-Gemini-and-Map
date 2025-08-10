@@ -1,0 +1,6 @@
+<svg width="128" height="128" viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg">
+  <rect width="128" height="128" rx="20" fill="#1877f2"/>
+  <circle cx="64" cy="45" r="8" fill="white"/>
+  <path d="M64 55 L64 85 M50 70 L78 70" stroke="white" stroke-width="4" stroke-linecap="round"/>
+  <text x="64" y="105" text-anchor="middle" fill="white" font-family="Arial" font-size="12" font-weight="bold">EVENTS</text>
+</svg>

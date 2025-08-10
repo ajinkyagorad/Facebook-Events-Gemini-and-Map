@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Facebook Events Map</title>
+    <style>
+        body {
+            width: 300px;
+            padding: 20px;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        
+        .header h1 {
+            font-size: 1.2rem;
+            color: #1877f2;
+            margin: 0 0 10px 0;
+        }
+        
+        .status {
+            padding: 10px;
+            border-radius: 6px;
+            margin-bottom: 15px;
+            text-align: center;
+        }
+        
+        .status.info {
+            background: #e3f2fd;
+            color: #1565c0;
+        }
+        
+        .status.success {
+            background: #e8f5e8;
+            color: #2e7d32;
+        }
+        
+        .btn {
+            width: 100%;
+            padding: 12px;
+            background: #1877f2;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 500;
+            margin-bottom: 10px;
+            transition: background 0.2s;
+        }
+        
+        .btn:hover {
+            background: #166fe5;
+        }
+        
+        .btn.secondary {
+            background: #42b883;
+        }
+        
+        .btn.secondary:hover {
+            background: #369870;
+        }
+        
+        .instructions {
+            font-size: 0.9rem;
+            color: #65676b;
+            line-height: 1.4;
+            margin-top: 15px;
+        }
+        
+        .instructions ol {
+            margin: 10px 0;
+            padding-left: 20px;
+        }
+        
+        .instructions li {
+            margin-bottom: 5px;
+        }
+        
+        .container {
+            text-align: center;
+        }
+        
+        .api-key-section {
+            margin-bottom: 20px;
+        }
+        
+        .api-input {
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 10px;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+        }
+        
+        .api-status {
+            margin-bottom: 10px;
+        }
+        
+        .help-text {
+            font-size: 0.8rem;
+            color: #666;
+        }
+        
+        .help-text a {
+            text-decoration: none;
+            color: #1877f2;
+        }
+        
+        .help-text a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Facebook Events Map</h2>
+        <p>Extract and visualize Facebook events on an interactive map with AI assistance.</p>
+        
+        <div class="api-key-section">
+            <h3>🤖 Gemini AI Setup</h3>
+            <input type="password" id="apiKeyInput" placeholder="Enter your Gemini API key..." class="api-input">
+            <button id="saveApiKeyBtn" class="btn secondary">Save API Key</button>
+            <div id="apiKeyStatus" class="api-status"></div>
+            <p class="help-text">
+                <a href="https://aistudio.google.com/app/apikey" target="_blank">Get your free Gemini API key →</a>
+            </p>
+        </div>
+        
+        <button id="openMapBtn" class="btn primary">
+            📍 Open Events Map
+        </button>
+        
+        <button id="clearDataBtn" class="btn secondary">
+            🗑️ Clear Event Data
+        </button>
+        
+        <div id="status" class="status"></div>
+    </div>
+    
+    <div class="instructions">
+        <strong>How to use:</strong>
+        <ol>
+            <li>Go to Facebook Events page</li>
+            <li>Click the floating 🗺️ button that appears</li>
+            <li>Wait for events to be extracted</li>
+            <li>View them on the interactive map!</li>
+        </ol>
+    </div>
+
+    <script src="popup.js"></script>
+</body>
+</html>

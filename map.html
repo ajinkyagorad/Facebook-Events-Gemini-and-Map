@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Facebook Events Map</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="ai-service.js"></script>
+</head>
+<body>
+    <div id="app">
+        <header>
+            <h1>📍 Facebook Events Map</h1>
+            <div class="controls">
+                <button id="list-view-btn" class="btn">📋 List View</button>
+                <button id="map-view-btn" class="btn active">🗺️ Map View</button>
+                <button id="ai-chat-btn" class="btn">🤖 AI Chat</button>
+                <span id="event-count">0 events</span>
+            </div>
+        </header>
+
+        <div id="map-container">
+            <div id="map"></div>
+            <div id="event-sidebar">
+                <div id="sidebar-header">
+                    <h3>Upcoming Events</h3>
+                    <button id="close-sidebar">×</button>
+                </div>
+                <div id="sidebar-content">
+                    <div id="event-list"></div>
+                </div>
+            </div>
+        </div>
+
+        <div id="list-container" style="display: none;">
+            <div id="events-grid"></div>
+        </div>
+
+        <div id="ai-chat-container" style="display: none;">
+            <div class="chat-interface">
+                <div id="chat-messages"></div>
+                <div class="quick-responses">
+                    <div class="quick-responses-title">Quick Questions:</div>
+                    <div id="quick-responses-list"></div>
+                </div>
+                <div class="chat-input-container">
+                    <input type="text" id="chat-input" placeholder="Ask me about events..." />
+                    <button id="send-message" class="btn">Send</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="loading" style="display: none;">
+            <div class="spinner"></div>
+            <p>Loading events...</p>
+        </div>
+
+        <div id="no-events" style="display: none;">
+            <div class="empty-state">
+                <h2>🎉 No Events Found</h2>
+                <p>Visit Facebook Events page and click the floating map button to extract events!</p>
+                <button id="refresh-btn" class="btn">🔄 Refresh</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Event Card Template -->
+    <template id="event-card-template">
+        <div class="event-card" data-event-id="">
+            <div class="event-header">
+                <h3 class="event-title"></h3>
+                <span class="event-time"></span>
+            </div>
+            <div class="event-details">
+                <div class="event-location">📍 <span class="location-text"></span></div>
+                <div class="event-description"></div>
+            </div>
+            <div class="event-actions">
+                <a href="#" target="_blank" class="btn btn-primary">View on Facebook</a>
+                <button class="btn btn-secondary locate-btn">📍 Show on Map</button>
+            </div>
+        </div>
+    </template>
+
+    <!-- Event Popup Template -->
+    <template id="popup-template">
+        <div class="popup-content">
+            <h4 class="popup-title"></h4>
+            <div class="popup-time"></div>
+            <div class="popup-location"></div>
+            <div class="popup-description"></div>
+            <a href="#" target="_blank" class="popup-link">View Event →</a>
+        </div>
+    </template>
+
+    <!-- Chat Message Templates -->
+    <template id="user-message-template">
+        <div class="message user-message">
+            <div class="message-content"></div>
+        </div>
+    </template>
+
+    <template id="ai-message-template">
+        <div class="message ai-message">
+            <div class="message-content"></div>
+            <div class="ai-events-list"></div>
+        </div>
+    </template>
+
+    <template id="ai-event-item-template">
+        <div class="ai-event-item">
+            <div class="ai-event-header">
+                <h4 class="ai-event-title"></h4>
+                <span class="ai-event-time"></span>
+            </div>
+            <div class="ai-event-details">
+                <div class="ai-event-location">📍 <span class="location-text"></span></div>
+                <div class="ai-event-description"></div>
+                <a href="#" target="_blank" class="ai-event-link">View on Facebook →</a>
+            </div>
+        </div>
+    </template>
+
+    <script src="map.js"></script>
+</body>
+</html>
