@@ -102,10 +102,10 @@ The AI will respond with **clickable links** to Facebook events and properly for
 - **Accurate Parsing**: Uses Facebook's actual DOM structure for reliable extraction
 
 ### ✅ **Real Geographic Mapping**
-- **OpenStreetMap Geocoding**: Events positioned by actual geographic coordinates
-- **Finnish Address Support**: Recognizes Helsinki addresses, postal codes, and venue names
-- **CORS-Safe API**: Uses proxy system for reliable geocoding requests
-- **Fallback Systems**: Multiple geocoding strategies with graceful degradation
+- **Geographic Positioning**: Attempts to map events using coordinates via OpenStreetMap geocoding
+- **Smart Location Parsing**: Filters out time strings and extracts clean venue names
+- **Helsinki Focus**: Optimized for Finnish addresses and locations
+- **Fallback System**: Grid layout when geocoding is blocked by Facebook's security policies
 
 ### ✅ **Enhanced AI Chat**
 - **Clickable Links**: AI responses include hyperlinked event URLs

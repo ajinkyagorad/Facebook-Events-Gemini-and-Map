@@ -1,7 +1,7 @@
 // Gemini AI Service for Facebook Events
 class EventsAI {
     constructor() {
-        this.apiKey = 'AIzaSyAsX93xW9Loe6NXfDTP_EA6HduUv4P9zqU';
+        this.apiKey = null; // API key should be loaded from storage
         this.apiUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent';
         this.events = [];
     }

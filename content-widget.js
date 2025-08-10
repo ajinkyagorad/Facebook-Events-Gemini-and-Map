@@ -782,6 +782,8 @@
     
     // Geocode events and create map
     const geocodedEvents = await geocodeEvents(eventsWithLocation);
+    const geocodedCount = geocodedEvents.filter(e => e.geocoded).length;
+    const gridCount = geocodedEvents.filter(e => !e.geocoded).length;
     
     mapContainer.innerHTML = `
       <div id="real-map" style="
@@ -793,6 +795,22 @@
         overflow: hidden;
         margin-bottom: 8px;
       ">
+        ${geocodedEvents.map((event, i) => `
+          <div class="map-marker" data-event-url="${event.url}" style="
+            position: absolute;
+            top: ${event.mapY}px;
+            left: ${event.mapX}px;
+            width: 12px;
+            height: 12px;
+            background: ${event.geocoded ? 'linear-gradient(45deg, #4285f4, #34a853)' : 'linear-gradient(45deg, #ff9800, #f57c00)'};
+            border: 2px solid white;
+            border-radius: 50%;
+            cursor: pointer;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+            transition: all 0.2s ease;
+            z-index: 10;
+          " title="${event.title} - ${event.location}${event.geocoded ? ' (geocoded)' : ' (grid positioned)'}"></div>
+        `).join('')}
         <div style="
           position: absolute;
           top: 8px;
@@ -804,30 +822,15 @@
           font-weight: 600;
           color: #1c1e21;
           box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-          z-index: 10;
         ">
           📍 Helsinki Events<br>
-          <span style="font-weight: 400; color: #65676b;">${totalEvents} total • ${geocodedEvents.length} geocoded</span>
+          <span style="font-weight: 400; color: #65676b;">${geocodedCount} geocoded • ${gridCount} grid</span>
         </div>
-        ${geocodedEvents.map((event, i) => {
-          const cleanTitle = event.title.split('interested')[0].split('going')[0].trim();
-          return `
-            <div class="map-marker" data-event-url="${event.url}" data-event-title="${cleanTitle}" style="
-              position: absolute; 
-              top: ${event.mapY}px; 
-              left: ${event.mapX}px; 
-              width: 12px; 
-              height: 12px; 
-              background: #ff4757; 
-              border: 2px solid white; 
-              border-radius: 50%; 
-              cursor: pointer;
-              box-shadow: 0 2px 6px rgba(0,0,0,0.4);
-              transition: all 0.2s ease;
-              z-index: 5;
-            " title="${cleanTitle} - ${event.location}"></div>
-          `;
-        }).join('')}
+        ${gridCount > 0 ? `
+          <div style="position: absolute; top: 8px; right: 8px; background: rgba(255,193,7,0.9); padding: 4px 8px; border-radius: 4px; font-size: 10px; color: #333;">
+            ⚠️ Geocoding blocked by Facebook CSP
+          </div>
+        ` : ''}
         <div style="
           position: absolute;
           bottom: 8px;
@@ -838,9 +841,8 @@
           border-radius: 10px;
           font-size: 10px;
           font-weight: 500;
-          z-index: 10;
         ">
-          ${geocodedEvents.length} events positioned
+          ${eventsWithLocation.length} events mapped
         </div>
       </div>
     `;
@@ -1314,35 +1316,100 @@
       west: 24.75
     };
     
-    for (const event of events) {
+    let geocodingBlocked = false;
+    let successfulGeocodings = 0;
+    
+    console.log(`🗺️ Starting geocoding for ${events.length} events...`);
+    
+    for (let i = 0; i < events.length; i++) {
+      const event = events[i];
+      
       try {
-        const coords = await geocodeLocation(event.location);
-        if (coords) {
-          // Convert lat/lng to map pixel coordinates
-          const x = ((coords.lng - bounds.west) / (bounds.east - bounds.west)) * mapWidth + 20;
-          const y = ((bounds.north - coords.lat) / (bounds.north - bounds.south)) * mapHeight + 30;
-          
-          // Ensure coordinates are within map bounds
-          const mapX = Math.max(10, Math.min(mapWidth + 10, x));
-          const mapY = Math.max(20, Math.min(mapHeight + 20, y));
-          
-          geocodedEvents.push({
-            ...event,
-            lat: coords.lat,
-            lng: coords.lng,
-            mapX: mapX,
-            mapY: mapY
-          });
+        // Skip geocoding attempts if we've detected it's blocked
+        if (!geocodingBlocked) {
+          const coords = await geocodeLocation(event.location);
+          if (coords) {
+            // Convert lat/lng to map pixel coordinates
+            const x = ((coords.lng - bounds.west) / (bounds.east - bounds.west)) * mapWidth + 20;
+            const y = ((bounds.north - coords.lat) / (bounds.north - bounds.south)) * mapHeight + 30;
+            
+            // Ensure coordinates are within map bounds
+            const mapX = Math.max(10, Math.min(mapWidth + 10, x));
+            const mapY = Math.max(20, Math.min(mapHeight + 20, y));
+            
+            geocodedEvents.push({
+              ...event,
+              lat: coords.lat,
+              lng: coords.lng,
+              mapX: mapX,
+              mapY: mapY,
+              geocoded: true
+            });
+            
+            successfulGeocodings++;
+            console.log(`✓ Geocoded "${event.location}" (${i + 1}/${events.length})`);
+            continue;
+          }
         }
-      } catch (error) {
-        console.log(`Could not geocode: ${event.location}`);
-        // Add with random position as fallback
+        
+        // Fallback: Use structured grid layout instead of random positioning
+        const cols = Math.ceil(Math.sqrt(events.length));
+        const rows = Math.ceil(events.length / cols);
+        const cellWidth = mapWidth / cols;
+        const cellHeight = mapHeight / rows;
+        
+        const col = i % cols;
+        const row = Math.floor(i / cols);
+        
+        // Add some randomness within the grid cell for natural look
+        const gridX = col * cellWidth + cellWidth * 0.2 + Math.random() * cellWidth * 0.6;
+        const gridY = row * cellHeight + cellHeight * 0.2 + Math.random() * cellHeight * 0.6;
+        
         geocodedEvents.push({
           ...event,
-          mapX: 50 + Math.random() * 250,
-          mapY: 50 + Math.random() * 150
+          mapX: Math.max(10, Math.min(mapWidth + 10, gridX + 20)),
+          mapY: Math.max(20, Math.min(mapHeight + 20, gridY + 30)),
+          geocoded: false
+        });
+        
+        if (!geocodingBlocked) {
+          console.log(`⚠️ Could not geocode "${event.location}", using grid position (${i + 1}/${events.length})`);
+        }
+        
+      } catch (error) {
+        // Detect if geocoding is being blocked by CSP
+        if (error.message && error.message.includes('NetworkError')) {
+          if (!geocodingBlocked) {
+            console.warn('🚫 Geocoding blocked by Facebook CSP - switching to grid layout for remaining events');
+            geocodingBlocked = true;
+          }
+        }
+        
+        // Use same grid fallback as above
+        const cols = Math.ceil(Math.sqrt(events.length));
+        const rows = Math.ceil(events.length / cols);
+        const cellWidth = mapWidth / cols;
+        const cellHeight = mapHeight / rows;
+        
+        const col = i % cols;
+        const row = Math.floor(i / cols);
+        
+        const gridX = col * cellWidth + cellWidth * 0.2 + Math.random() * cellWidth * 0.6;
+        const gridY = row * cellHeight + cellHeight * 0.2 + Math.random() * cellHeight * 0.6;
+        
+        geocodedEvents.push({
+          ...event,
+          mapX: Math.max(10, Math.min(mapWidth + 10, gridX + 20)),
+          mapY: Math.max(20, Math.min(mapHeight + 20, gridY + 30)),
+          geocoded: false
         });
       }
+    }
+    
+    if (geocodingBlocked) {
+      console.log(`🗺️ Geocoding complete: ${successfulGeocodings}/${events.length} geocoded (blocked by Facebook CSP), ${events.length - successfulGeocodings} using grid layout`);
+    } else {
+      console.log(`🗺️ Geocoding complete: ${successfulGeocodings}/${events.length} successfully geocoded, ${events.length - successfulGeocodings} using fallback positioning`);
     }
     
     return geocodedEvents;
