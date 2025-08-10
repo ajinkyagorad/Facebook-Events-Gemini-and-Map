@@ -24,11 +24,20 @@ A powerful Firefox browser extension that extracts Facebook events and displays 
 5. **Navigate** to the extension folder and select `manifest.json`
 6. **Done!** The extension is now installed
 
-### Method 2: Permanent Installation
-1. **Zip the extension folder** (excluding `.git` if present)
-2. **Rename** the zip file to have a `.xpi` extension
-3. **Drag and drop** the `.xpi` file into Firefox
-4. **Click "Add"** when prompted
+### Method 2: Permanent Installation (Advanced)
+
+**Option A: Using web-ext (Recommended)**
+1. **Install web-ext**: `npm install -g web-ext`
+2. **Navigate to extension folder**: `cd path/to/FbEventExtension`
+3. **Build extension**: `web-ext build`
+4. **Install the generated .xpi** from `web-ext-artifacts/` folder
+
+**Option B: Firefox Developer Edition**
+1. **Download Firefox Developer Edition**
+2. **Set `xpinstall.signatures.required` to `false`** in `about:config`
+3. **Load as temporary add-on** (same as Method 1, but persists longer)
+
+**Note**: For true permanent installation, the extension needs to be signed by Mozilla or installed in Firefox Developer Edition with signature checking disabled.
 
 ## 🔑 Setup Gemini AI (Required for Chat)
 
