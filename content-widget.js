@@ -865,7 +865,7 @@
     const totalEvents = storedEvents.length;
     const mappableEvents = eventsToMap.length;
     
-    // Show loading state
+    // Show enhanced loading state with explanation
     mapContainer.innerHTML = `
       <div style="
         width: 100%;
@@ -876,12 +876,31 @@
         overflow: hidden;
         margin-bottom: 8px;
         display: flex;
+        flex-direction: column;
         align-items: center;
         justify-content: center;
         color: white;
         font-size: 14px;
+        text-align: center;
+        padding: 20px;
       ">
-        🗺️ Mapping ${mappableEvents} events to their real locations...
+        <div style="font-size: 18px; margin-bottom: 10px;">🗺️ Loading Map...</div>
+        <div style="margin-bottom: 8px;">Processing ${mappableEvents} events</div>
+        <div style="font-size: 12px; opacity: 0.9; line-height: 1.4;">
+          ${showAllEvents ? 'Showing all events (some without locations)' : 'Geocoding event locations...'}<br>
+          ${showAllEvents ? '' : 'May be slow due to Facebook security restrictions'}
+        </div>
+        <div id="open-full-map-loading" style="
+          margin-top: 15px;
+          padding: 8px 16px;
+          background: rgba(255,255,255,0.2);
+          border-radius: 20px;
+          font-size: 11px;
+          cursor: pointer;
+          transition: all 0.2s ease;
+        ">
+          🔗 Open Full Map in New Tab
+        </div>
       </div>
     `;
     
@@ -933,9 +952,23 @@
         </div>
         ${gridCount > 0 ? `
           <div style="position: absolute; top: 8px; right: 8px; background: rgba(255,193,7,0.9); padding: 4px 8px; border-radius: 4px; font-size: 10px; color: #333;">
-            ⚠️ Geocoding blocked by Facebook CSP
+            ⚠️ Some locations estimated (CSP blocked)
           </div>
         ` : ''}
+        <div id="open-full-map-corner" style="
+          position: absolute;
+          top: 8px;
+          left: 8px;
+          background: rgba(0,0,0,0.7);
+          color: white;
+          padding: 4px 8px;
+          border-radius: 4px;
+          font-size: 10px;
+          cursor: pointer;
+          transition: all 0.2s ease;
+        " title="Open full map in new tab">
+          🔗 Full Map
+        </div>
         <div style="
           position: absolute;
           bottom: 8px;
@@ -972,6 +1005,89 @@
         marker.style.background = '#ff4757';
       });
     });
+    
+    // Add CSP-safe event handlers for "Open Full Map" buttons
+    const openFullMapLoading = document.getElementById('open-full-map-loading');
+    const openFullMapCorner = document.getElementById('open-full-map-corner');
+    
+    const openFullMap = () => {
+      try {
+        // Method 1: Try extension runtime API
+        if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.getURL) {
+          const mapUrl = chrome.runtime.getURL('map.html');
+          window.open(mapUrl, '_blank');
+          return;
+        }
+        
+        // Method 2: Try browser API (Firefox)
+        if (typeof browser !== 'undefined' && browser.runtime && browser.runtime.getURL) {
+          const mapUrl = browser.runtime.getURL('map.html');
+          window.open(mapUrl, '_blank');
+          return;
+        }
+        
+        // Method 3: Send message to background script to open map
+        if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
+          chrome.runtime.sendMessage({ action: 'openMap' }, (response) => {
+            if (chrome.runtime.lastError) {
+              console.warn('Background script method failed:', chrome.runtime.lastError);
+              showFallbackMessage();
+            }
+          });
+          return;
+        }
+        
+        // Method 4: Fallback message
+        showFallbackMessage();
+        
+      } catch (error) {
+        console.warn('Could not open full map:', error);
+        showFallbackMessage();
+      }
+    };
+    
+    const showFallbackMessage = () => {
+      // Create a more user-friendly notification
+      const notification = document.createElement('div');
+      notification.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        background: #1877f2;
+        color: white;
+        padding: 12px 16px;
+        border-radius: 8px;
+        font-size: 14px;
+        z-index: 10001;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        max-width: 300px;
+        line-height: 1.4;
+      `;
+      notification.innerHTML = `
+        <div style="font-weight: 600; margin-bottom: 6px;">🗺️ Open Full Map</div>
+        <div style="font-size: 12px;">Click the extension icon in your browser toolbar, then select "View Events Map"</div>
+        <div style="margin-top: 8px; text-align: right;">
+          <span style="cursor: pointer; font-size: 12px; opacity: 0.8;" onclick="this.parentElement.parentElement.remove()">✕ Close</span>
+        </div>
+      `;
+      
+      document.body.appendChild(notification);
+      
+      // Auto-remove after 8 seconds
+      setTimeout(() => {
+        if (notification.parentElement) {
+          notification.remove();
+        }
+      }, 8000);
+    };
+    
+    if (openFullMapLoading) {
+      openFullMapLoading.addEventListener('click', openFullMap);
+    }
+    
+    if (openFullMapCorner) {
+      openFullMapCorner.addEventListener('click', openFullMap);
+    }
   }
   
   // Proper Field Separation Parser - Extract each field into separate table columns
@@ -1408,8 +1524,6 @@
   
   // Geocoding Functions
   async function geocodeEvents(events) {
-    const geocodedEvents = [];
-    const helsinkiCenter = { lat: 60.1699, lng: 24.9384 }; // Helsinki center coordinates
     const mapWidth = 350; // Map container width minus padding
     const mapHeight = 220; // Map container height minus padding
     
@@ -1421,93 +1535,97 @@
       west: 24.75
     };
     
-    let geocodingBlocked = false;
-    let successfulGeocodings = 0;
+    console.log(`🗺️ Starting parallel geocoding for ${events.length} events...`);
     
-    console.log(`🗺️ Starting geocoding for ${events.length} events...`);
-    
-    for (let i = 0; i < events.length; i++) {
-      const event = events[i];
+    // Helper function to create grid position
+    const createGridPosition = (index, total) => {
+      const cols = Math.ceil(Math.sqrt(total));
+      const rows = Math.ceil(total / cols);
+      const cellWidth = mapWidth / cols;
+      const cellHeight = mapHeight / rows;
       
-      try {
-        // Skip geocoding attempts if we've detected it's blocked
-        if (!geocodingBlocked) {
-          const coords = await geocodeLocation(event.location);
-          if (coords) {
-            // Convert lat/lng to map pixel coordinates
-            const x = ((coords.lng - bounds.west) / (bounds.east - bounds.west)) * mapWidth + 20;
-            const y = ((bounds.north - coords.lat) / (bounds.north - bounds.south)) * mapHeight + 30;
+      const col = index % cols;
+      const row = Math.floor(index / cols);
+      
+      // Add some randomness within the grid cell for natural look
+      const gridX = col * cellWidth + cellWidth * 0.2 + Math.random() * cellWidth * 0.6;
+      const gridY = row * cellHeight + cellHeight * 0.2 + Math.random() * cellHeight * 0.6;
+      
+      return {
+        mapX: Math.max(10, Math.min(mapWidth + 10, gridX + 20)),
+        mapY: Math.max(20, Math.min(mapHeight + 20, gridY + 30))
+      };
+    };
+    
+    // Process events in parallel with limited concurrency to avoid overwhelming the API
+    const BATCH_SIZE = 5; // Process 5 locations at a time
+    const geocodedEvents = [];
+    let successfulGeocodings = 0;
+    let geocodingBlocked = false;
+    
+    for (let i = 0; i < events.length; i += BATCH_SIZE) {
+      const batch = events.slice(i, i + BATCH_SIZE);
+      
+      // Process batch in parallel
+      const batchPromises = batch.map(async (event, batchIndex) => {
+        const globalIndex = i + batchIndex;
+        
+        try {
+          // Skip geocoding attempts if we've detected it's blocked
+          if (!geocodingBlocked && event.location) {
+            const coords = await Promise.race([
+              geocodeLocation(event.location),
+              new Promise((_, reject) => setTimeout(() => reject(new Error('Geocoding timeout')), 3000))
+            ]);
             
-            // Ensure coordinates are within map bounds
-            const mapX = Math.max(10, Math.min(mapWidth + 10, x));
-            const mapY = Math.max(20, Math.min(mapHeight + 20, y));
-            
-            geocodedEvents.push({
-              ...event,
-              lat: coords.lat,
-              lng: coords.lng,
-              mapX: mapX,
-              mapY: mapY,
-              geocoded: true
-            });
-            
-            successfulGeocodings++;
-            console.log(`✓ Geocoded "${event.location}" (${i + 1}/${events.length})`);
-            continue;
+            if (coords) {
+              // Convert lat/lng to map pixel coordinates
+              const x = ((coords.lng - bounds.west) / (bounds.east - bounds.west)) * mapWidth + 20;
+              const y = ((bounds.north - coords.lat) / (bounds.north - bounds.south)) * mapHeight + 30;
+              
+              // Ensure coordinates are within map bounds
+              const mapX = Math.max(10, Math.min(mapWidth + 10, x));
+              const mapY = Math.max(20, Math.min(mapHeight + 20, y));
+              
+              successfulGeocodings++;
+              console.log(`✓ Geocoded "${event.location}" (${globalIndex + 1}/${events.length})`);
+              
+              return {
+                ...event,
+                lat: coords.lat,
+                lng: coords.lng,
+                mapX: mapX,
+                mapY: mapY,
+                geocoded: true
+              };
+            }
+          }
+        } catch (error) {
+          // Detect if geocoding is being blocked by CSP
+          if (error.message && (error.message.includes('NetworkError') || error.message.includes('blocked'))) {
+            if (!geocodingBlocked) {
+              console.warn('🚫 Geocoding blocked by Facebook CSP - using grid layout for remaining events');
+              geocodingBlocked = true;
+            }
           }
         }
         
-        // Fallback: Use structured grid layout instead of random positioning
-        const cols = Math.ceil(Math.sqrt(events.length));
-        const rows = Math.ceil(events.length / cols);
-        const cellWidth = mapWidth / cols;
-        const cellHeight = mapHeight / rows;
-        
-        const col = i % cols;
-        const row = Math.floor(i / cols);
-        
-        // Add some randomness within the grid cell for natural look
-        const gridX = col * cellWidth + cellWidth * 0.2 + Math.random() * cellWidth * 0.6;
-        const gridY = row * cellHeight + cellHeight * 0.2 + Math.random() * cellHeight * 0.6;
-        
-        geocodedEvents.push({
+        // Fallback: Use structured grid layout
+        const gridPos = createGridPosition(globalIndex, events.length);
+        return {
           ...event,
-          mapX: Math.max(10, Math.min(mapWidth + 10, gridX + 20)),
-          mapY: Math.max(20, Math.min(mapHeight + 20, gridY + 30)),
+          ...gridPos,
           geocoded: false
-        });
-        
-        if (!geocodingBlocked) {
-          console.log(`⚠️ Could not geocode "${event.location}", using grid position (${i + 1}/${events.length})`);
-        }
-        
-      } catch (error) {
-        // Detect if geocoding is being blocked by CSP
-        if (error.message && error.message.includes('NetworkError')) {
-          if (!geocodingBlocked) {
-            console.warn('🚫 Geocoding blocked by Facebook CSP - switching to grid layout for remaining events');
-            geocodingBlocked = true;
-          }
-        }
-        
-        // Use same grid fallback as above
-        const cols = Math.ceil(Math.sqrt(events.length));
-        const rows = Math.ceil(events.length / cols);
-        const cellWidth = mapWidth / cols;
-        const cellHeight = mapHeight / rows;
-        
-        const col = i % cols;
-        const row = Math.floor(i / cols);
-        
-        const gridX = col * cellWidth + cellWidth * 0.2 + Math.random() * cellWidth * 0.6;
-        const gridY = row * cellHeight + cellHeight * 0.2 + Math.random() * cellHeight * 0.6;
-        
-        geocodedEvents.push({
-          ...event,
-          mapX: Math.max(10, Math.min(mapWidth + 10, gridX + 20)),
-          mapY: Math.max(20, Math.min(mapHeight + 20, gridY + 30)),
-          geocoded: false
-        });
+        };
+      });
+      
+      // Wait for batch to complete
+      const batchResults = await Promise.all(batchPromises);
+      geocodedEvents.push(...batchResults);
+      
+      // Update progress if there are more batches
+      if (i + BATCH_SIZE < events.length) {
+        console.log(`🗺️ Progress: ${Math.min(i + BATCH_SIZE, events.length)}/${events.length} events processed...`);
       }
     }
     
