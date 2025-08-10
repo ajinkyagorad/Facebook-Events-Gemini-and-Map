@@ -170,6 +170,33 @@
             <div class="tab-content">
               <!-- Map tab -->
               <div class="tab-pane active" id="map-tab">
+                <div class="map-controls" style="
+                  display: flex;
+                  gap: 8px;
+                  margin-bottom: 8px;
+                  justify-content: center;
+                ">
+                  <button class="map-control-btn" id="show-located-events" style="
+                    padding: 6px 12px;
+                    background: #1877f2;
+                    color: white;
+                    border: none;
+                    border-radius: 6px;
+                    font-size: 11px;
+                    cursor: pointer;
+                    font-weight: 500;
+                  ">Located Events</button>
+                  <button class="map-control-btn" id="show-all-events" style="
+                    padding: 6px 12px;
+                    background: #42b883;
+                    color: white;
+                    border: none;
+                    border-radius: 6px;
+                    font-size: 11px;
+                    cursor: pointer;
+                    font-weight: 500;
+                  ">Show All Events</button>
+                </div>
                 <div class="map-container" id="map-container"></div>
                 <div class="map-status" id="map-status">Click extract to load events</div>
               </div>
@@ -529,6 +556,24 @@
       });
     });
     
+    // Map control buttons event handlers
+    setTimeout(() => {
+      const locatedBtn = document.getElementById('show-located-events');
+      const allBtn = document.getElementById('show-all-events');
+      
+      if (locatedBtn) {
+        locatedBtn.addEventListener('click', async () => {
+          await initializeMap(false); // Show only located events
+        });
+      }
+      
+      if (allBtn) {
+        allBtn.addEventListener('click', async () => {
+          await initializeMap(true); // Show all events
+        });
+      }
+    }, 300);
+    
     // Initialize default tab (map) on widget creation
     setTimeout(() => {
       initializeMap();
@@ -578,67 +623,110 @@
     }
     
     eventsList.innerHTML = storedEvents.map((event, index) => {
-      // Use the properly parsed structured data
-      const cleanTitle = event.title || 'Untitled Event';
-      const dateDisplay = event.date || 'Date TBD';
-      const timeDisplay = event.time || '';
-      const locationDisplay = event.location || 'Location TBD';
+      // Improved data extraction with fallbacks
+      let displayTitle = event.title || 'Untitled Event';
+      let displayDate = event.date || event.time_text || 'Date TBD';
+      let displayTime = event.time || '';
+      let displayLocation = event.location || 'Location TBD';
+      let displayDescription = '';
+      
+      // If we have time_text but no separate date/time, parse it better
+      if (event.time_text && !event.date && !event.time) {
+        displayDate = event.time_text;
+      }
+      
+      // Create a clean description from available data
+      if (event.description) {
+        displayDescription = event.description.length > 100 ? 
+          event.description.substring(0, 100) + '...' : event.description;
+      } else {
+        // Fallback: create description from other fields
+        const parts = [];
+        if (displayDate !== 'Date TBD') parts.push(displayDate);
+        if (displayTime) parts.push(displayTime);
+        if (displayLocation !== 'Location TBD') parts.push(displayLocation);
+        displayDescription = parts.join(' • ');
+      }
+      
       const interestedCount = event.interested_count || 0;
       const goingCount = event.going_count || 0;
-      
-      // Format full time display
-      const fullTimeDisplay = event.time_text || dateDisplay;
       
       return `
         <div class="event-item" data-event-url="${event.url}" data-event-index="${index}" style="
           margin-bottom: 8px;
-          padding: 10px;
+          padding: 12px;
           background: rgba(255,255,255,0.95);
           border-radius: 8px;
           border-left: 3px solid #1877f2;
           cursor: pointer;
           transition: all 0.2s ease;
           font-size: 12px;
-          line-height: 1.3;
+          line-height: 1.4;
+          box-shadow: 0 1px 3px rgba(0,0,0,0.1);
         ">
+          <!-- Title Section -->
           <div style="
             font-weight: 600;
             color: #1c1e21;
-            margin-bottom: 6px;
-            font-size: 13px;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-          ">${cleanTitle}</div>
+            margin-bottom: 8px;
+            font-size: 14px;
+            line-height: 1.3;
+            word-wrap: break-word;
+          ">${displayTitle}</div>
+          
+          <!-- Date & Time Section -->
           <div style="
-            color: #65676b;
-            font-size: 11px;
-            margin-bottom: 3px;
+            color: #1877f2;
+            font-size: 12px;
+            margin-bottom: 6px;
+            font-weight: 500;
             display: flex;
             align-items: center;
-            gap: 4px;
+            gap: 6px;
           ">
-            <span>📅 ${dateDisplay}</span>
-            ${timeDisplay ? `<span>🕒 ${timeDisplay}</span>` : ''}
+            <span>📅</span>
+            <span>${displayDate}</span>
+            ${displayTime ? `<span style="margin-left: 8px;">🕒 ${displayTime}</span>` : ''}
           </div>
+          
+          <!-- Location Section -->
           <div style="
             color: #65676b;
             font-size: 11px;
-            margin-bottom: 3px;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-          ">📍 ${locationDisplay}</div>
+            margin-bottom: 6px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+          ">
+            <span>📍</span>
+            <span style="word-wrap: break-word;">${displayLocation}</span>
+          </div>
+          
+          <!-- Description Section -->
+          ${displayDescription ? `
+          <div style="
+            color: #65676b;
+            font-size: 11px;
+            margin-bottom: 6px;
+            line-height: 1.3;
+            word-wrap: break-word;
+            font-style: italic;
+          ">${displayDescription}</div>
+          ` : ''}
+          
+          <!-- Engagement Section -->
           ${(interestedCount > 0 || goingCount > 0) ? `
           <div style="
             color: #65676b;
             font-size: 10px;
-            margin-top: 4px;
+            margin-top: 8px;
+            padding-top: 6px;
+            border-top: 1px solid #e4e6ea;
             display: flex;
-            gap: 8px;
+            gap: 12px;
           ">
-            ${interestedCount > 0 ? `<span>👍 ${interestedCount} interested</span>` : ''}
-            ${goingCount > 0 ? `<span>✅ ${goingCount} going</span>` : ''}
+            ${interestedCount > 0 ? `<span style="display: flex; align-items: center; gap: 3px;">👍 ${interestedCount} interested</span>` : ''}
+            ${goingCount > 0 ? `<span style="display: flex; align-items: center; gap: 3px;">✅ ${goingCount} going</span>` : ''}
           </div>
           ` : ''}
         </div>
@@ -752,13 +840,30 @@
     }
   }
   
-  async function initializeMap() {
+  let currentMapMode = 'located'; // 'located' or 'all'
+  
+  async function initializeMap(showAllEvents = false) {
     const mapContainer = document.getElementById('map-container');
     if (!mapContainer || storedEvents.length === 0) return;
     
-    const eventsWithLocation = storedEvents.filter(e => e.location);
+    currentMapMode = showAllEvents ? 'all' : 'located';
+    
+    // Update button states
+    const locatedBtn = document.getElementById('show-located-events');
+    const allBtn = document.getElementById('show-all-events');
+    if (locatedBtn && allBtn) {
+      if (showAllEvents) {
+        locatedBtn.style.background = '#65676b';
+        allBtn.style.background = '#42b883';
+      } else {
+        locatedBtn.style.background = '#1877f2';
+        allBtn.style.background = '#65676b';
+      }
+    }
+    
+    const eventsToMap = showAllEvents ? storedEvents : storedEvents.filter(e => e.location);
     const totalEvents = storedEvents.length;
-    const mappableEvents = eventsWithLocation.length;
+    const mappableEvents = eventsToMap.length;
     
     // Show loading state
     mapContainer.innerHTML = `
@@ -781,7 +886,7 @@
     `;
     
     // Geocode events and create map
-    const geocodedEvents = await geocodeEvents(eventsWithLocation);
+    const geocodedEvents = await geocodeEvents(eventsToMap);
     const geocodedCount = geocodedEvents.filter(e => e.geocoded).length;
     const gridCount = geocodedEvents.filter(e => !e.geocoded).length;
     
@@ -842,7 +947,7 @@
           font-size: 10px;
           font-weight: 500;
         ">
-          ${eventsWithLocation.length} events mapped
+          ${eventsToMap.length} events mapped${showAllEvents ? ' (all events)' : ' (located only)'}
         </div>
       </div>
     `;
