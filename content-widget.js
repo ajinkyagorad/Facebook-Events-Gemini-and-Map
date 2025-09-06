@@ -155,6 +155,7 @@
             <div class="widget-title">Events Map</div>
             <div class="widget-controls">
               <button class="widget-btn extract-btn" id="extract-btn" title="Extract Events">⬇</button>
+              <button class="widget-btn explorer-btn" id="explorer-btn" title="Open Events Explorer (Experimental)">🎯</button>
               <button class="widget-btn ai-btn" id="ai-btn" title="AI Chat">🤖</button>
               <button class="widget-btn close-btn" id="close-btn" title="Close">×</button>
             </div>
@@ -531,6 +532,7 @@
     const expanded = document.getElementById('widget-expanded');
     const closeBtn = document.getElementById('close-btn');
     const extractBtn = document.getElementById('extract-btn');
+    const explorerBtn = document.getElementById('explorer-btn');
     const aiBtn = document.getElementById('ai-btn');
     const chatInput = document.getElementById('chat-input');
     const sendChat = document.getElementById('send-chat');
@@ -555,6 +557,40 @@
     
     // Extract events
     extractBtn.addEventListener('click', extractEvents);
+    
+    // Events Explorer functionality
+    if (explorerBtn) {
+      explorerBtn.addEventListener('click', () => {
+        console.log('Events Explorer button clicked');
+        try {
+          let explorerUrl;
+          if (typeof chrome !== 'undefined' && chrome.runtime) {
+            explorerUrl = chrome.runtime.getURL('events-explorer.html');
+            console.log('Using Chrome runtime URL:', explorerUrl);
+          } else if (typeof browser !== 'undefined' && browser.runtime) {
+            explorerUrl = browser.runtime.getURL('events-explorer.html');
+            console.log('Using Firefox runtime URL:', explorerUrl);
+          } else {
+            // Fallback for testing
+            explorerUrl = './events-explorer.html';
+            console.log('Using fallback URL:', explorerUrl);
+          }
+          
+          const newWindow = window.open(explorerUrl, '_blank', 'width=1400,height=900,scrollbars=yes,resizable=yes');
+          if (!newWindow) {
+            console.error('Failed to open new window - popup blocked?');
+            alert('Please allow popups for this site to open the Events Explorer');
+          } else {
+            console.log('Events Explorer window opened successfully');
+          }
+        } catch (error) {
+          console.error('Error opening Events Explorer:', error);
+          alert('Error opening Events Explorer: ' + error.message);
+        }
+      });
+    } else {
+      console.error('Explorer button not found');
+    }
     
     // AI Chat functionality
     aiBtn.addEventListener('click', () => {

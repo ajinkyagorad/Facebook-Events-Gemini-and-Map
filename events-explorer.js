@@ -1,0 +1,741 @@
+// Facebook Events Explorer - Experimental Interface
+(function() {
+    'use strict';
+
+    // Data model and state
+    let rawEvents = [];
+    let processedEvents = [];
+    let filteredEvents = [];
+    let currentFilters = {
+        dayBucket: 'all',
+        types: new Set(),
+        neighbourhoods: new Set(),
+        priceRanges: new Set(),
+        minPopularity: 0,
+        outdoors: false,
+        beginner: false,
+        liveMusic: false,
+        hideCancelled: true,
+        search: ''
+    };
+    let currentSort = 'popularity';
+    let currentView = 'grid';
+
+    // Event type mapping and colors
+    const eventTypes = {
+        dance: { label: 'Dance', color: '#e91e63', keywords: ['salsa', 'bachata', 'zouk', 'tango', 'milonga', 'lambada', 'swing', 'balboa', 'jive', 'dance'] },
+        music: { label: 'Music', color: '#9c27b0', keywords: ['live', 'concert', 'duo', 'band', 'festival', 'organ', 'dj', 'set', 'music', 'gig'] },
+        festival: { label: 'Festival', color: '#ff9800', keywords: ['festival', 'fest', 'celebration', 'carnival'] },
+        market: { label: 'Market/Kirppis', color: '#4caf50', keywords: ['kirppis', 'market', 'myynti', 'outlet', 'fleamarket', 'myyjäiset'] },
+        sport: { label: 'Sport', color: '#2196f3', keywords: ['run', 'juoksu', 'sm', 'cup', 'fencing', 'nyrkkeily', 'hockey', 'kalastus', 'skate', 'sport'] },
+        family: { label: 'Family/Kids', color: '#ff5722', keywords: ['lasten', 'perhe', 'kids', 'puistojuhla', 'family', 'children'] },
+        wellness: { label: 'Wellness/Yoga', color: '#8bc34a', keywords: ['yoga', 'jooga', 'pilates', 'sointukylpy', 'yin', 'acroyoga', 'meditaatio', 'wellness'] },
+        theatre: { label: 'Theatre/Film', color: '#795548', keywords: ['teatteri', 'näytös', 'film', 'movie', 'ooppera', 'theatre', 'cinema'] },
+        talk: { label: 'Talk/Panel', color: '#607d8b', keywords: ['talk', 'panel', 'discussion', 'lecture', 'seminar', 'workshop'] },
+        art: { label: 'Art/Exhibition', color: '#f44336', keywords: ['art', 'exhibition', 'gallery', 'museo', 'näyttely', 'taide'] },
+        nightlife: { label: 'Nightlife/Club', color: '#673ab7', keywords: ['club', 'kaiku', 'ääniwalli', 'on the rocks', 'infektio', 'techno', 'nightlife'] },
+        religion: { label: 'Religion/Ritual', color: '#3f51b5', keywords: ['church', 'kirkko', 'religion', 'spiritual', 'ritual'] },
+        food: { label: 'Food/Drink', color: '#ff9800', keywords: ['food', 'drink', 'restaurant', 'cafe', 'ruoka', 'juoma', 'cooking'] },
+        misc: { label: 'Miscellaneous', color: '#9e9e9e', keywords: [] }
+    };
+
+    // Helsinki neighbourhoods
+    const neighbourhoods = [
+        'Kallio', 'Töölö', 'Lauttasaari', 'Herttoniemi', 'Punavuori', 'Kamppi', 'Kruununhaka', 
+        'Ullanlinna', 'Eira', 'Katajanokka', 'Sörnäinen', 'Arabianranta', 'Vuosaari', 
+        'Mellunkylä', 'Kontula', 'Malmi', 'Jakomäki', 'Pikku Huopalahti', 'Munkkiniemi'
+    ];
+
+    // Initialize the application
+    async function init() {
+        await loadEventsFromStorage();
+        setupEventListeners();
+        populateFilters();
+    }
+
+    // Load events from extension storage
+    async function loadEventsFromStorage() {
+        try {
+            let events = [];
+            
+            console.log('Attempting to load events from storage...');
+            
+            // Try to get events from extension storage
+            if (typeof chrome !== 'undefined' && chrome.storage) {
+                console.log('Using Chrome storage API');
+                const result = await new Promise((resolve, reject) => {
+                    chrome.storage.local.get(['events'], (result) => {
+                        if (chrome.runtime.lastError) {
+                            console.error('Chrome storage error:', chrome.runtime.lastError);
+                            reject(chrome.runtime.lastError);
+                        } else {
+                            resolve(result);
+                        }
+                    });
+                });
+                events = result.events || [];
+                console.log('Chrome storage result:', result);
+            } else if (typeof browser !== 'undefined' && browser.storage) {
+                console.log('Using Firefox storage API');
+                const result = await browser.storage.local.get(['events']);
+                events = result.events || [];
+                console.log('Firefox storage result:', result);
+            } else {
+                console.log('Using localStorage fallback');
+                // Fallback to localStorage
+                const stored = localStorage.getItem('fb_events');
+                events = stored ? JSON.parse(stored) : [];
+                console.log('localStorage result:', events);
+            }
+
+            rawEvents = events;
+            console.log(`Successfully loaded ${events.length} events from storage`);
+            
+            // Process events immediately after loading
+            if (events.length > 0) {
+                processEvents();
+                applyFilters();
+                updateStats();
+            } else {
+                console.log('No events found, generating sample data');
+                rawEvents = generateSampleEvents();
+                processEvents();
+                applyFilters();
+                updateStats();
+            }
+        } catch (error) {
+            console.error('Error loading events:', error);
+            console.log('Falling back to sample events');
+            rawEvents = generateSampleEvents();
+            processEvents();
+            applyFilters();
+            updateStats();
+        }
+    }
+
+    // Generate sample events for demonstration
+    function generateSampleEvents() {
+        const sampleEvents = [
+            {
+                id: 1,
+                title: "Salsa Night at Kaiku",
+                description: "Latin dance night with live music and beginner classes",
+                time_text: "Tonight 20:00",
+                location: "Kaiku, Katajanokka",
+                interested_count: 45,
+                going_count: 12,
+                url: "https://facebook.com/events/123"
+            },
+            {
+                id: 2,
+                title: "Kirpputori Kauppatori",
+                description: "Flea market at the market square",
+                time_text: "Tomorrow 10:00",
+                location: "Kauppatori, Kruununhaka",
+                interested_count: 23,
+                going_count: 8,
+                url: "https://facebook.com/events/124"
+            },
+            {
+                id: 3,
+                title: "Yoga in Töölönlahti Park",
+                description: "Free outdoor yoga session for beginners",
+                time_text: "Today 18:00",
+                location: "Töölönlahti Park, Töölö",
+                interested_count: 67,
+                going_count: 34,
+                url: "https://facebook.com/events/125"
+            },
+            {
+                id: 4,
+                title: "Jazz Concert at Savoy Theatre",
+                description: "Evening of smooth jazz with Helsinki Jazz Trio",
+                time_text: "Sat, Nov 30 19:30",
+                location: "Savoy Theatre, Punavuori",
+                interested_count: 156,
+                going_count: 89,
+                url: "https://facebook.com/events/126"
+            },
+            {
+                id: 5,
+                title: "Kids Festival at Suomenlinna",
+                description: "Family-friendly activities and games",
+                time_text: "Sun, Dec 1 12:00",
+                location: "Suomenlinna, Suomenlinna",
+                interested_count: 234,
+                going_count: 67,
+                url: "https://facebook.com/events/127"
+            }
+        ];
+        
+        console.log('Using sample events for demonstration');
+        return sampleEvents;
+    }
+
+    // Process raw events into structured format
+    function processEvents() {
+        processedEvents = rawEvents.map((event, index) => {
+            const processed = {
+                id: event.id || index + 1,
+                title: event.title || 'Untitled Event',
+                type: deriveEventType(event),
+                when_label: event.time_text || event.date || 'Time TBD',
+                start_dt: parseDateTime(event),
+                end_dt: null, // Not available in current data
+                day_bucket: deriveDayBucket(event),
+                venue: extractVenue(event.location || ''),
+                address: event.location || 'Location TBD',
+                neighbourhood: deriveNeighbourhood(event.location || ''),
+                organizer: event.organizer || '',
+                interested: event.interested_count || 0,
+                going: event.going_count || 0,
+                popularity: calculatePopularity(event.going_count || 0, event.interested_count || 0),
+                price: derivePrice(event),
+                link: event.url || '',
+                notes: event.description || '',
+                tags: deriveTags(event),
+                cancelled: isCancelled(event),
+                score: 0 // Will be calculated later
+            };
+            
+            processed.score = calculateSmartScore(processed);
+            return processed;
+        });
+
+        console.log(`Processed ${processedEvents.length} events`);
+    }
+
+    // Derive event type from content
+    function deriveEventType(event) {
+        const text = `${event.title || ''} ${event.description || ''} ${event.location || ''}`.toLowerCase();
+        
+        for (const [type, config] of Object.entries(eventTypes)) {
+            if (config.keywords.some(keyword => text.includes(keyword))) {
+                return type;
+            }
+        }
+        
+        return 'misc';
+    }
+
+    // Parse date/time from event
+    function parseDateTime(event) {
+        if (!event.time_text && !event.date) return null;
+        
+        const timeText = event.time_text || event.date || '';
+        const now = new Date();
+        
+        // Handle "Today", "Tonight", "Tomorrow" etc.
+        if (timeText.includes('Today') || timeText.includes('Tonight')) {
+            return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        }
+        
+        if (timeText.includes('Tomorrow')) {
+            const tomorrow = new Date(now);
+            tomorrow.setDate(tomorrow.getDate() + 1);
+            return tomorrow;
+        }
+        
+        // Try to parse other formats
+        try {
+            return new Date(timeText);
+        } catch {
+            return null;
+        }
+    }
+
+    // Derive day bucket for event
+    function deriveDayBucket(event) {
+        const timeText = (event.time_text || event.date || '').toLowerCase();
+        
+        if (timeText.includes('happening now')) return 'happening_now';
+        if (timeText.includes('today')) return 'today';
+        if (timeText.includes('tonight')) return 'tonight';
+        if (timeText.includes('tomorrow')) return 'tomorrow';
+        
+        const startDate = parseDateTime(event);
+        if (!startDate) return 'later';
+        
+        const now = new Date();
+        const daysDiff = Math.floor((startDate - now) / (1000 * 60 * 60 * 24));
+        
+        if (daysDiff <= 0) return 'today';
+        if (daysDiff === 1) return 'tomorrow';
+        if (daysDiff <= 7) return 'this_week';
+        return 'later';
+    }
+
+    // Extract venue name from location
+    function extractVenue(location) {
+        if (!location) return '';
+        
+        // Split by comma and take first part as venue
+        const parts = location.split(',');
+        return parts[0].trim();
+    }
+
+    // Derive neighbourhood from location
+    function deriveNeighbourhood(location) {
+        if (!location) return '';
+        
+        const locationLower = location.toLowerCase();
+        
+        for (const neighbourhood of neighbourhoods) {
+            if (locationLower.includes(neighbourhood.toLowerCase())) {
+                return neighbourhood;
+            }
+        }
+        
+        return '';
+    }
+
+    // Calculate popularity score
+    function calculatePopularity(going, interested) {
+        return going * 1.0 + interested * 0.2;
+    }
+
+    // Derive price information
+    function derivePrice(event) {
+        const text = `${event.title || ''} ${event.description || ''}`.toLowerCase();
+        
+        if (text.includes('free') || text.includes('ilmainen')) return 'free';
+        
+        const priceMatch = text.match(/(\d+)\s*€/);
+        if (priceMatch) {
+            const price = parseInt(priceMatch[1]);
+            if (price < 10) return '<10';
+            if (price <= 20) return '10-20';
+            return '>20';
+        }
+        
+        return 'unknown';
+    }
+
+    // Derive tags from event content
+    function deriveTags(event) {
+        const tags = [];
+        const text = `${event.title || ''} ${event.description || ''}`.toLowerCase();
+        
+        // Add type-specific tags
+        const type = deriveEventType(event);
+        if (eventTypes[type]) {
+            tags.push(...eventTypes[type].keywords.filter(keyword => text.includes(keyword)));
+        }
+        
+        // Special tags
+        if (text.includes('venetsialaiset') || text.includes('venetian')) tags.push('venetsialaiset');
+        if (text.includes('beginner') || text.includes('alkeistaso')) tags.push('beginner');
+        if (text.includes('outdoor') || text.includes('ulko') || text.includes('puisto')) tags.push('outdoors');
+        if (text.includes('live music') || text.includes('live')) tags.push('live_music');
+        
+        return [...new Set(tags)]; // Remove duplicates
+    }
+
+    // Check if event is cancelled
+    function isCancelled(event) {
+        const text = `${event.title || ''} ${event.description || ''}`.toLowerCase();
+        return text.includes('peruttu') || text.includes('cancelled');
+    }
+
+    // Calculate smart score for ranking
+    function calculateSmartScore(event) {
+        const popularityNorm = Math.min(event.popularity / 100, 1); // Normalize to 0-1
+        const timeFit = calculateTimeFit(event);
+        const typeMatch = 0.5; // Default since we don't have user preferences
+        const distanceNorm = 0.5; // Default since we don't have location
+        const novelty = 0.5; // Default
+        
+        return 0.45 * popularityNorm + 0.25 * timeFit + 0.15 * typeMatch + 0.10 * distanceNorm + 0.05 * novelty;
+    }
+
+    // Calculate time fit score
+    function calculateTimeFit(event) {
+        if (!event.start_dt) return 0.5;
+        
+        const now = new Date();
+        const eventTime = new Date(event.start_dt);
+        const hoursDiff = Math.abs(eventTime - now) / (1000 * 60 * 60);
+        
+        // Prefer events happening soon
+        if (hoursDiff < 2) return 1;
+        if (hoursDiff < 24) return 0.8;
+        if (hoursDiff < 72) return 0.6;
+        return 0.3;
+    }
+
+    // Setup event listeners
+    function setupEventListeners() {
+        // Search
+        document.getElementById('searchBox').addEventListener('input', (e) => {
+            currentFilters.search = e.target.value.toLowerCase();
+            applyFilters();
+        });
+
+        // Sort
+        document.getElementById('sortSelect').addEventListener('change', (e) => {
+            currentSort = e.target.value;
+            renderEvents();
+        });
+
+        // View toggles
+        document.getElementById('gridView').addEventListener('click', () => setView('grid'));
+        document.getElementById('mapView').addEventListener('click', () => setView('map'));
+        document.getElementById('timelineView').addEventListener('click', () => setView('timeline'));
+
+        // Popularity slider
+        const slider = document.getElementById('popularitySlider');
+        const valueDisplay = document.getElementById('popularityValue');
+        slider.addEventListener('input', (e) => {
+            const value = parseInt(e.target.value);
+            currentFilters.minPopularity = value;
+            valueDisplay.textContent = `${value}+`;
+            applyFilters();
+        });
+
+        // Filter checkboxes
+        setupFilterCheckboxes();
+    }
+
+    // Setup filter checkboxes
+    function setupFilterCheckboxes() {
+        // Price filters
+        ['free', '<10', '10-20', '>20', 'unknown'].forEach(range => {
+            const checkbox = document.getElementById(`price-${range.replace(/[<>]/g, '').replace('-', '')}`);
+            if (checkbox) {
+                checkbox.addEventListener('change', (e) => {
+                    if (e.target.checked) {
+                        currentFilters.priceRanges.add(range);
+                    } else {
+                        currentFilters.priceRanges.delete(range);
+                    }
+                    applyFilters();
+                });
+            }
+        });
+
+        // Special filters
+        document.getElementById('outdoors').addEventListener('change', (e) => {
+            currentFilters.outdoors = e.target.checked;
+            applyFilters();
+        });
+
+        document.getElementById('beginner').addEventListener('change', (e) => {
+            currentFilters.beginner = e.target.checked;
+            applyFilters();
+        });
+
+        document.getElementById('liveMusic').addEventListener('change', (e) => {
+            currentFilters.liveMusic = e.target.checked;
+            applyFilters();
+        });
+
+        document.getElementById('hideCancelled').addEventListener('change', (e) => {
+            currentFilters.hideCancelled = e.target.checked;
+            applyFilters();
+        });
+    }
+
+    // Populate filter options
+    function populateFilters() {
+        populateDayTabs();
+        populateTypeFilters();
+        populateNeighbourhoodFilters();
+    }
+
+    // Populate day tabs
+    function populateDayTabs() {
+        const dayTabs = document.getElementById('dayTabs');
+        const buckets = ['all', 'happening_now', 'today', 'tonight', 'tomorrow', 'this_week', 'later'];
+        const labels = {
+            all: 'All Days',
+            happening_now: 'Happening Now',
+            today: 'Today',
+            tonight: 'Tonight',
+            tomorrow: 'Tomorrow',
+            this_week: 'This Week',
+            later: 'Later'
+        };
+
+        dayTabs.innerHTML = buckets.map(bucket => `
+            <button class="day-tab ${bucket === 'all' ? 'active' : ''}" data-bucket="${bucket}">
+                ${labels[bucket]}
+            </button>
+        `).join('');
+
+        // Add event listeners
+        dayTabs.addEventListener('click', (e) => {
+            if (e.target.classList.contains('day-tab')) {
+                document.querySelectorAll('.day-tab').forEach(tab => tab.classList.remove('active'));
+                e.target.classList.add('active');
+                currentFilters.dayBucket = e.target.dataset.bucket;
+                applyFilters();
+            }
+        });
+    }
+
+    // Populate type filters
+    function populateTypeFilters() {
+        const typeFilters = document.getElementById('typeFilters');
+        
+        typeFilters.innerHTML = Object.entries(eventTypes).map(([type, config]) => `
+            <div class="filter-option">
+                <input type="checkbox" id="type-${type}" value="${type}">
+                <label for="type-${type}">${config.label}</label>
+            </div>
+        `).join('');
+
+        // Add event listeners
+        Object.keys(eventTypes).forEach(type => {
+            document.getElementById(`type-${type}`).addEventListener('change', (e) => {
+                if (e.target.checked) {
+                    currentFilters.types.add(type);
+                } else {
+                    currentFilters.types.delete(type);
+                }
+                applyFilters();
+            });
+        });
+    }
+
+    // Populate neighbourhood filters
+    function populateNeighbourhoodFilters() {
+        const neighbourhoodFilters = document.getElementById('neighbourhoodFilters');
+        
+        // Get unique neighbourhoods from processed events
+        const usedNeighbourhoods = [...new Set(processedEvents.map(e => e.neighbourhood).filter(n => n))];
+        
+        neighbourhoodFilters.innerHTML = usedNeighbourhoods.map(neighbourhood => `
+            <div class="filter-option">
+                <input type="checkbox" id="neighbourhood-${neighbourhood.replace(/\s+/g, '')}" value="${neighbourhood}">
+                <label for="neighbourhood-${neighbourhood.replace(/\s+/g, '')}">${neighbourhood}</label>
+            </div>
+        `).join('');
+
+        // Add event listeners
+        usedNeighbourhoods.forEach(neighbourhood => {
+            const id = `neighbourhood-${neighbourhood.replace(/\s+/g, '')}`;
+            document.getElementById(id).addEventListener('change', (e) => {
+                if (e.target.checked) {
+                    currentFilters.neighbourhoods.add(neighbourhood);
+                } else {
+                    currentFilters.neighbourhoods.delete(neighbourhood);
+                }
+                applyFilters();
+            });
+        });
+    }
+
+    // Apply filters to events
+    function applyFilters() {
+        filteredEvents = processedEvents.filter(event => {
+            // Day bucket filter
+            if (currentFilters.dayBucket !== 'all' && event.day_bucket !== currentFilters.dayBucket) {
+                return false;
+            }
+
+            // Type filter
+            if (currentFilters.types.size > 0 && !currentFilters.types.has(event.type)) {
+                return false;
+            }
+
+            // Neighbourhood filter
+            if (currentFilters.neighbourhoods.size > 0 && !currentFilters.neighbourhoods.has(event.neighbourhood)) {
+                return false;
+            }
+
+            // Price filter
+            if (currentFilters.priceRanges.size > 0 && !currentFilters.priceRanges.has(event.price)) {
+                return false;
+            }
+
+            // Popularity filter
+            if (event.popularity < currentFilters.minPopularity) {
+                return false;
+            }
+
+            // Special filters
+            if (currentFilters.outdoors && !event.tags.includes('outdoors')) {
+                return false;
+            }
+
+            if (currentFilters.beginner && !event.tags.includes('beginner')) {
+                return false;
+            }
+
+            if (currentFilters.liveMusic && !event.tags.includes('live_music')) {
+                return false;
+            }
+
+            if (currentFilters.hideCancelled && event.cancelled) {
+                return false;
+            }
+
+            // Search filter
+            if (currentFilters.search) {
+                const searchText = `${event.title} ${event.notes} ${event.organizer}`.toLowerCase();
+                if (!searchText.includes(currentFilters.search)) {
+                    return false;
+                }
+            }
+
+            return true;
+        });
+
+        renderEvents();
+        updateStats();
+    }
+
+    // Set current view
+    function setView(view) {
+        currentView = view;
+        
+        // Update toggle buttons
+        document.querySelectorAll('.view-toggle').forEach(btn => btn.classList.remove('active'));
+        document.getElementById(`${view}View`).classList.add('active');
+        
+        // Show/hide panels
+        document.getElementById('eventsGrid').style.display = view === 'grid' ? 'grid' : 'none';
+        document.getElementById('mapPanel').classList.toggle('active', view === 'map');
+        document.getElementById('timelineStrip').classList.toggle('active', view === 'timeline');
+        
+        if (view === 'timeline') {
+            renderTimeline();
+        }
+    }
+
+    // Render events based on current view and filters
+    function renderEvents() {
+        if (currentView === 'grid') {
+            renderEventGrid();
+        } else if (currentView === 'timeline') {
+            renderTimeline();
+        }
+        // Map rendering would go here
+    }
+
+    // Render event grid
+    function renderEventGrid() {
+        const grid = document.getElementById('eventsGrid');
+        
+        // Sort events
+        const sortedEvents = [...filteredEvents].sort((a, b) => {
+            switch (currentSort) {
+                case 'popularity':
+                    return b.popularity - a.popularity;
+                case 'time':
+                    if (!a.start_dt && !b.start_dt) return 0;
+                    if (!a.start_dt) return 1;
+                    if (!b.start_dt) return -1;
+                    return new Date(a.start_dt) - new Date(b.start_dt);
+                case 'score':
+                    return b.score - a.score;
+                default:
+                    return b.popularity - a.popularity;
+            }
+        });
+
+        grid.innerHTML = sortedEvents.map(event => `
+            <div class="event-card ${event.cancelled ? 'cancelled' : ''}" onclick="openEvent('${event.link}')">
+                <div class="event-type-badge type-${event.type}" style="background: ${eventTypes[event.type]?.color || '#9e9e9e'}">
+                    ${eventTypes[event.type]?.label || 'Misc'}
+                </div>
+                
+                <div class="event-title">${event.title}</div>
+                
+                <div class="event-when">
+                    <span>📅</span>
+                    <span>${event.when_label}</span>
+                </div>
+                
+                <div class="event-location">
+                    <span>📍</span>
+                    <span>${event.venue}${event.neighbourhood ? `, ${event.neighbourhood}` : ''}</span>
+                </div>
+                
+                <div class="event-popularity">
+                    ${event.interested > 0 ? `<span class="popularity-chip interested">${event.interested} interested</span>` : ''}
+                    ${event.going > 0 ? `<span class="popularity-chip going">${event.going} going</span>` : ''}
+                </div>
+                
+                ${event.tags.length > 0 ? `
+                <div class="event-tags">
+                    ${event.tags.slice(0, 3).map(tag => `<span class="event-tag">${tag}</span>`).join('')}
+                </div>
+                ` : ''}
+                
+                ${event.cancelled ? '<div style="color: #e74c3c; font-weight: 600; font-size: 12px;">❌ CANCELLED</div>' : ''}
+            </div>
+        `).join('');
+    }
+
+    // Render timeline view
+    function renderTimeline() {
+        const timelineHours = document.getElementById('timelineHours');
+        
+        // Generate 24 hour slots
+        const hours = Array.from({length: 24}, (_, i) => i);
+        
+        timelineHours.innerHTML = hours.map(hour => {
+            const hourEvents = filteredEvents.filter(event => {
+                if (!event.start_dt) return false;
+                return new Date(event.start_dt).getHours() === hour;
+            });
+            
+            return `
+                <div class="timeline-hour">
+                    <div class="hour-label">${hour.toString().padStart(2, '0')}:00</div>
+                    ${hourEvents.map(event => `
+                        <div class="timeline-event" onclick="openEvent('${event.link}')" title="${event.title}">
+                            ${event.title.substring(0, 20)}${event.title.length > 20 ? '...' : ''}
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        }).join('');
+    }
+
+    // Update statistics
+    function updateStats() {
+        document.getElementById('totalEvents').textContent = processedEvents.length;
+        document.getElementById('filteredEvents').textContent = filteredEvents.length;
+        
+        const avgPopularity = filteredEvents.length > 0 
+            ? Math.round(filteredEvents.reduce((sum, e) => sum + e.popularity, 0) / filteredEvents.length)
+            : 0;
+        document.getElementById('avgPopularity').textContent = avgPopularity;
+    }
+
+    // Open event in new tab
+    window.openEvent = function(url) {
+        if (url) {
+            window.open(url, '_blank');
+        }
+    };
+
+    // Add storage listener for real-time updates
+    function setupStorageListener() {
+        if (typeof chrome !== 'undefined' && chrome.storage) {
+            chrome.storage.onChanged.addListener((changes, namespace) => {
+                if (namespace === 'local' && changes.events) {
+                    console.log('Storage updated, reloading events...');
+                    rawEvents = changes.events.newValue || [];
+                    processEvents();
+                    applyFilters();
+                    updateStats();
+                }
+            });
+        }
+    }
+
+    // Initialize when DOM is ready
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', () => {
+            init();
+            setupStorageListener();
+        });
+    } else {
+        init();
+        setupStorageListener();
+    }
+
+})();

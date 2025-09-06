@@ -36,6 +36,8 @@
     "styles.css",
     "ai-service.js",
     "widget.css",
+    "events-explorer.html",
+    "events-explorer.js",
     "icons/*.png"
   ],
   
