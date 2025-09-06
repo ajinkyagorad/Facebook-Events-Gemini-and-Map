@@ -203,6 +203,47 @@
               
               <!-- List tab -->
               <div class="tab-pane" id="list-tab">
+                <div class="list-controls" style="
+                  display: flex;
+                  gap: 8px;
+                  margin-bottom: 12px;
+                  justify-content: center;
+                ">
+                  <button class="list-control-btn" id="copy-all-events" style="
+                    padding: 8px 16px;
+                    background: linear-gradient(135deg, #42b883, #369870);
+                    color: white;
+                    border: none;
+                    border-radius: 8px;
+                    font-size: 12px;
+                    cursor: pointer;
+                    font-weight: 600;
+                    display: flex;
+                    align-items: center;
+                    gap: 6px;
+                    transition: all 0.3s ease;
+                    box-shadow: 0 2px 8px rgba(66, 184, 131, 0.3);
+                  " title="Copy all events to clipboard">
+                    📋 Copy All
+                  </button>
+                  <button class="list-control-btn" id="clear-all-events" style="
+                    padding: 8px 16px;
+                    background: linear-gradient(135deg, #e74c3c, #c0392b);
+                    color: white;
+                    border: none;
+                    border-radius: 8px;
+                    font-size: 12px;
+                    cursor: pointer;
+                    font-weight: 600;
+                    display: flex;
+                    align-items: center;
+                    gap: 6px;
+                    transition: all 0.3s ease;
+                    box-shadow: 0 2px 8px rgba(231, 76, 60, 0.3);
+                  " title="Clear all events from list">
+                    🗑️ Clear All
+                  </button>
+                </div>
                 <div class="events-list" id="events-list"></div>
               </div>
               
@@ -444,6 +485,31 @@
         justify-content: center;
       }
       
+      .list-control-btn:hover {
+        transform: translateY(-2px) scale(1.05);
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+      }
+      
+      .list-control-btn:active {
+        transform: translateY(0) scale(0.98);
+      }
+      
+      #copy-all-events:hover {
+        background: linear-gradient(135deg, #4ecdc4, #44a08d);
+        box-shadow: 0 4px 16px rgba(66, 184, 131, 0.4);
+      }
+      
+      #clear-all-events:hover {
+        background: linear-gradient(135deg, #ff6b6b, #ee5a52);
+        box-shadow: 0 4px 16px rgba(231, 76, 60, 0.4);
+      }
+      
+      .list-control-btn:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+        transform: none !important;
+      }
+      
       @media (max-width: 768px) {
         .widget-expanded {
           width: 320px;
@@ -529,6 +595,22 @@
         sendMessage();
       }
     });
+    
+    // List control buttons
+    const copyAllBtn = document.getElementById('copy-all-events');
+    const clearAllBtn = document.getElementById('clear-all-events');
+    
+    if (copyAllBtn) {
+      copyAllBtn.addEventListener('click', async () => {
+        await copyAllEvents();
+      });
+    }
+    
+    if (clearAllBtn) {
+      clearAllBtn.addEventListener('click', async () => {
+        await clearAllEvents();
+      });
+    }
     
     // Tab switching
     tabBtns.forEach(btn => {
@@ -740,6 +822,104 @@
         if (url) window.open(url, '_blank');
       });
     });
+  }
+  
+  // Copy all events to clipboard
+  async function copyAllEvents() {
+    const copyBtn = document.getElementById('copy-all-events');
+    if (!copyBtn || storedEvents.length === 0) return;
+    
+    const originalText = copyBtn.innerHTML;
+    copyBtn.disabled = true;
+    copyBtn.innerHTML = '⏳ Copying...';
+    
+    try {
+      // Format events as readable text
+      const eventsText = storedEvents.map((event, index) => {
+        const title = event.title || 'Untitled Event';
+        const date = event.date || event.time_text || 'Date TBD';
+        const time = event.time || '';
+        const location = event.location || 'Location TBD';
+        const description = event.description || '';
+        const url = event.url || '';
+        
+        let eventText = `${index + 1}. ${title}\n`;
+        eventText += `   📅 ${date}${time ? ` at ${time}` : ''}\n`;
+        eventText += `   📍 ${location}\n`;
+        if (description) {
+          eventText += `   📝 ${description.substring(0, 200)}${description.length > 200 ? '...' : ''}\n`;
+        }
+        if (url) {
+          eventText += `   🔗 ${url}\n`;
+        }
+        
+        const interestedCount = event.interested_count || 0;
+        const goingCount = event.going_count || 0;
+        if (interestedCount > 0 || goingCount > 0) {
+          eventText += `   👥 ${interestedCount} interested, ${goingCount} going\n`;
+        }
+        
+        return eventText;
+      }).join('\n');
+      
+      const fullText = `Facebook Events (${storedEvents.length} events)\n${'='.repeat(40)}\n\n${eventsText}\n\nExtracted on ${new Date().toLocaleString()}`;
+      
+      // Copy to clipboard
+      await navigator.clipboard.writeText(fullText);
+      
+      copyBtn.innerHTML = '✅ Copied!';
+      setTimeout(() => {
+        copyBtn.innerHTML = originalText;
+        copyBtn.disabled = false;
+      }, 2000);
+      
+    } catch (error) {
+      console.error('Copy error:', error);
+      copyBtn.innerHTML = '❌ Failed';
+      setTimeout(() => {
+        copyBtn.innerHTML = originalText;
+        copyBtn.disabled = false;
+      }, 2000);
+    }
+  }
+  
+  // Clear all events from storage
+  async function clearAllEvents() {
+    const clearBtn = document.getElementById('clear-all-events');
+    if (!clearBtn) return;
+    
+    // Show confirmation
+    if (!confirm(`Are you sure you want to clear all ${storedEvents.length} events? This action cannot be undone.`)) {
+      return;
+    }
+    
+    const originalText = clearBtn.innerHTML;
+    clearBtn.disabled = true;
+    clearBtn.innerHTML = '⏳ Clearing...';
+    
+    try {
+      // Clear from storage
+      await storage.set({ events: [] });
+      storedEvents = [];
+      
+      // Update UI
+      updateEventsList();
+      updateStatus();
+      
+      clearBtn.innerHTML = '✅ Cleared!';
+      setTimeout(() => {
+        clearBtn.innerHTML = originalText;
+        clearBtn.disabled = false;
+      }, 2000);
+      
+    } catch (error) {
+      console.error('Clear error:', error);
+      clearBtn.innerHTML = '❌ Failed';
+      setTimeout(() => {
+        clearBtn.innerHTML = originalText;
+        clearBtn.disabled = false;
+      }, 2000);
+    }
   }
   
   async function extractEvents() {
