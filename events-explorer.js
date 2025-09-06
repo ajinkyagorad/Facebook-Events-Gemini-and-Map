@@ -46,11 +46,31 @@
         'Mellunkylä', 'Kontula', 'Malmi', 'Jakomäki', 'Pikku Huopalahti', 'Munkkiniemi'
     ];
 
+    // Initialize timeline controls
+    function initializeTimelineControls() {
+        const compressBtn = document.getElementById('compressBtn');
+        const expandBtn = document.getElementById('expandBtn');
+        const timelineHours = document.getElementById('timelineHours');
+
+        compressBtn.addEventListener('click', () => {
+            timelineHours.classList.add('compressed');
+            compressBtn.classList.add('active');
+            expandBtn.classList.remove('active');
+        });
+
+        expandBtn.addEventListener('click', () => {
+            timelineHours.classList.remove('compressed');
+            expandBtn.classList.add('active');
+            compressBtn.classList.remove('active');
+        });
+    }
+
     // Initialize the application
     async function init() {
         await loadEventsFromStorage();
         setupEventListeners();
         populateFilters();
+        initializeTimelineControls();
     }
 
     // Load events from extension storage
@@ -679,8 +699,8 @@
             }
         });
 
-        grid.innerHTML = sortedEvents.map(event => `
-            <div class="event-card ${event.cancelled ? 'cancelled' : ''}" onclick="openEvent('${event.link}')">
+        grid.innerHTML = sortedEvents.map((event, index) => `
+            <div class="event-card ${event.cancelled ? 'cancelled' : ''}" data-event-url="${event.link}" data-card-id="card-${index}">
                 <div class="event-type-badge type-${event.type}" style="background: ${eventTypes[event.type]?.color || '#9e9e9e'}">
                     ${eventTypes[event.type]?.label || 'Misc'}
                 </div>
@@ -711,42 +731,86 @@
                 ${event.cancelled ? '<div style="color: #e74c3c; font-weight: 600; font-size: 12px;">❌ CANCELLED</div>' : ''}
             </div>
         `).join('');
+        
+        // Add event listeners for event cards
+        grid.querySelectorAll('.event-card').forEach(card => {
+            card.addEventListener('click', () => {
+                const url = card.dataset.eventUrl;
+                if (url) openEvent(url);
+            });
+        });
     }
 
     // Render timeline view
     function renderTimeline() {
         const timelineHours = document.getElementById('timelineHours');
+        const timelineInfo = document.getElementById('timelineInfo');
+        
+        // Filter events that have valid time data
+        const eventsWithTime = filteredEvents.filter(event => {
+            if (!event.start_dt) return false;
+            const eventDate = new Date(event.start_dt);
+            // Check if it's a valid date and not just defaulted to midnight
+            return !isNaN(eventDate.getTime()) && 
+                   (eventDate.getHours() !== 0 || eventDate.getMinutes() !== 0 || 
+                    event.when_label.includes('12:00 AM') || event.when_label.includes('00:00'));
+        });
+        
+        // Update timeline info
+        if (timelineInfo) {
+            timelineInfo.textContent = `${eventsWithTime.length} of ${filteredEvents.length} events have time mapping`;
+        }
         
         // Generate 24 hour slots
         const hours = Array.from({length: 24}, (_, i) => i);
         
         timelineHours.innerHTML = hours.map(hour => {
-            const hourEvents = filteredEvents.filter(event => {
-                if (!event.start_dt) return false;
+            const hourEvents = eventsWithTime.filter(event => {
                 const eventHour = new Date(event.start_dt).getHours();
                 return eventHour === hour;
             });
-            
+
             return `
                 <div class="timeline-hour">
                     <div class="hour-label">${hour.toString().padStart(2, '0')}:00</div>
-                    ${hourEvents.map(event => {
-                        const eventTime = new Date(event.start_dt);
-                        const minutes = eventTime.getMinutes();
-                        const timeStr = minutes > 0 ? `${hour.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}` : '';
-                        return `
-                            <div class="timeline-event" onclick="openEvent('${event.link}')" 
-                                 title="${event.title} - ${event.when_label}"
-                                 style="background: ${eventTypes[event.type]?.color || '#9e9e9e'}">
-                                <div style="font-weight: 600; font-size: 11px;">${event.title.substring(0, 15)}${event.title.length > 15 ? '...' : ''}</div>
-                                ${timeStr ? `<div style="font-size: 9px; opacity: 0.8;">${timeStr}</div>` : ''}
-                                <div style="font-size: 9px; opacity: 0.7;">${event.neighbourhood || event.venue}</div>
+                    ${hourEvents.map(event => `
+                        <div class="timeline-event type-${event.type}" 
+                             data-event-url="${event.link}" 
+                             data-event-id="timeline-${event.id}"
+                             style="background: ${eventTypes[event.type]?.color || '#9e9e9e'}">
+                            <div style="font-weight: 600; margin-bottom: 2px;">${event.title}</div>
+                            <div style="font-size: 9px; opacity: 0.9;">${event.venue}</div>
+                            <div class="timeline-tooltip">
+                                <strong>${event.title}</strong><br>
+                                📅 ${event.when_label}<br>
+                                📍 ${event.venue}${event.neighbourhood ? `, ${event.neighbourhood}` : ''}<br>
+                                ${event.interested > 0 ? `👥 ${event.interested} interested` : ''}
+                                ${event.going > 0 ? ` • ${event.going} going` : ''}
+                                ${event.tags.length > 0 ? `<br>🏷️ ${event.tags.slice(0, 3).join(', ')}` : ''}
                             </div>
-                        `;
-                    }).join('')}
+                        </div>
+                    `).join('')}
                 </div>
             `;
         }).join('');
+        
+        // Add event listeners for timeline events
+        timelineHours.querySelectorAll('.timeline-event').forEach(element => {
+            element.addEventListener('click', () => {
+                const url = element.dataset.eventUrl;
+                if (url) openEvent(url);
+            });
+
+            // Add hover tooltip functionality
+            const tooltip = element.querySelector('.timeline-tooltip');
+            element.addEventListener('mouseenter', () => {
+                tooltip.classList.add('visible');
+            });
+            
+            element.addEventListener('mouseleave', () => {
+                tooltip.classList.remove('visible');
+            });
+        });
     }
 
     // Render interactive map
@@ -813,12 +877,14 @@
                     </div>
                 `).join('')}
             </div>
-            ${eventsWithCoords.map(event => {
+            ${eventsWithCoords.map((event, index) => {
                 const x = ((event.lng - bounds.minLng) / lngRange) * mapWidth;
                 const y = ((bounds.maxLat - event.lat) / latRange) * mapHeight;
                 
                 return `
                     <div class="map-pin" 
+                         data-event-url="${event.link}"
+                         data-pin-id="map-pin-${index}"
                          style="
                             position: absolute;
                             left: ${x - 8}px;
@@ -833,10 +899,7 @@
                             transition: all 0.2s ease;
                             z-index: 10;
                          "
-                         title="${event.title} - ${event.venue}"
-                         onclick="openEvent('${event.link}')"
-                         onmouseover="this.style.transform='scale(1.5)'; this.style.zIndex='20'"
-                         onmouseout="this.style.transform='scale(1)'; this.style.zIndex='10'">
+                         title="${event.title} - ${event.venue}">
                     </div>
                 `;
             }).join('')}
@@ -868,6 +931,24 @@
                 `;
             }).join('')}
         `;
+        
+        // Add event listeners for map pins
+        mapContainer.querySelectorAll('.map-pin').forEach(pin => {
+            pin.addEventListener('click', () => {
+                const url = pin.dataset.eventUrl;
+                if (url) openEvent(url);
+            });
+            
+            pin.addEventListener('mouseenter', () => {
+                pin.style.transform = 'scale(1.5)';
+                pin.style.zIndex = '20';
+            });
+            
+            pin.addEventListener('mouseleave', () => {
+                pin.style.transform = 'scale(1)';
+                pin.style.zIndex = '10';
+            });
+        });
     }
 
     // Update statistics
@@ -903,15 +984,71 @@
         }
     }
 
+    // Initialize timeline controls
+    function initializeTimelineControls() {
+        const compressBtn = document.getElementById('compressBtn');
+        const expandBtn = document.getElementById('expandBtn');
+        const timelineHours = document.getElementById('timelineHours');
+        const timelineStrip = document.getElementById('timelineStrip');
+        const resizeHandle = document.getElementById('timelineResizeHandle');
+
+        if (compressBtn && expandBtn && timelineHours) {
+            compressBtn.addEventListener('click', () => {
+                timelineHours.classList.add('compressed');
+                compressBtn.classList.add('active');
+                expandBtn.classList.remove('active');
+            });
+
+            expandBtn.addEventListener('click', () => {
+                timelineHours.classList.remove('compressed');
+                expandBtn.classList.add('active');
+                compressBtn.classList.remove('active');
+            });
+        }
+
+        // Add resize functionality
+        if (resizeHandle && timelineStrip) {
+            let isResizing = false;
+            let startY = 0;
+            let startHeight = 0;
+
+            resizeHandle.addEventListener('mousedown', (e) => {
+                isResizing = true;
+                startY = e.clientY;
+                startHeight = parseInt(document.defaultView.getComputedStyle(timelineStrip).height, 10);
+                document.addEventListener('mousemove', handleResize);
+                document.addEventListener('mouseup', stopResize);
+                e.preventDefault();
+            });
+
+            function handleResize(e) {
+                if (!isResizing) return;
+                const height = startHeight + e.clientY - startY;
+                const minHeight = 200;
+                const maxHeight = 600;
+                const constrainedHeight = Math.min(Math.max(height, minHeight), maxHeight);
+                timelineStrip.style.height = constrainedHeight + 'px';
+            }
+
+            function stopResize() {
+                isResizing = false;
+                document.removeEventListener('mousemove', handleResize);
+                document.removeEventListener('mouseup', stopResize);
+            }
+        }
+    }
+
     // Initialize when DOM is ready
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', () => {
             init();
             setupStorageListener();
+            initializeTimelineControls();
         });
     } else {
         init();
         setupStorageListener();
+        initializeTimelineControls();
     }
 
 })();

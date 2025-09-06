@@ -105,6 +105,8 @@
             grid-template-columns: 280px 1fr;
             gap: 20px;
             min-height: 600px;
+            max-width: 100%;
+            overflow: hidden;
         }
 
         .sidebar {
@@ -330,24 +332,103 @@
 
         .timeline-strip {
             display: none;
-            height: 200px;
+            height: 300px;
             background: white;
             border: 1px solid #e4e6ea;
             border-radius: 8px;
             margin-bottom: 20px;
-            padding: 16px;
-            overflow-x: auto;
-            overflow-y: hidden;
+            position: relative;
+            min-height: 200px;
+            max-height: 600px;
+            width: 100%;
+            overflow: hidden;
         }
 
         .timeline-strip.active {
             display: block;
         }
 
+        .timeline-controls {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            z-index: 100;
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .timeline-control-btn {
+            background: rgba(255, 255, 255, 0.9);
+            border: 1px solid #e4e6ea;
+            border-radius: 4px;
+            padding: 4px 8px;
+            font-size: 11px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .timeline-control-btn:hover {
+            background: #f0f2f5;
+        }
+
+        .timeline-control-btn.active {
+            background: #1877f2;
+            color: white;
+            border-color: #1877f2;
+        }
+
+        .timeline-resize-handle {
+            position: absolute;
+            bottom: 0;
+            right: 0;
+            width: 20px;
+            height: 20px;
+            background: linear-gradient(-45deg, transparent 0%, transparent 30%, #ccc 30%, #ccc 40%, transparent 40%, transparent 60%, #ccc 60%, #ccc 70%, transparent 70%);
+            cursor: se-resize;
+            border-bottom-right-radius: 8px;
+        }
+
+        .timeline-resize-handle:hover {
+            background: linear-gradient(-45deg, transparent 0%, transparent 30%, #999 30%, #999 40%, transparent 40%, transparent 60%, #999 60%, #999 70%, transparent 70%);
+        }
+
+        .timeline-content {
+            height: calc(100% - 16px);
+            margin: 8px;
+            overflow-x: auto;
+            overflow-y: auto;
+            border-radius: 6px;
+            background: #f8f9fa;
+        }
+
         .timeline-hours {
             display: flex;
             height: 100%;
+            min-width: 100%;
+            width: max-content;
+            transition: all 0.3s ease;
+        }
+
+        .timeline-hours.compressed {
+            min-width: 100%;
+            width: 100%;
+        }
+
+        .timeline-hours:not(.compressed) {
             min-width: 2400px;
+        }
+
+        .timeline-info {
+            position: absolute;
+            top: 8px;
+            left: 8px;
+            background: rgba(255, 255, 255, 0.9);
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            color: #65676b;
+            z-index: 100;
         }
 
         .timeline-hour {
@@ -371,16 +452,57 @@
         .timeline-event {
             background: #1877f2;
             color: white;
-            padding: 4px 6px;
-            border-radius: 4px;
+            padding: 6px 8px;
+            border-radius: 6px;
             font-size: 10px;
-            margin-bottom: 2px;
+            margin-bottom: 4px;
             cursor: pointer;
-            transition: background 0.2s ease;
+            transition: all 0.2s ease;
+            position: relative;
+            min-height: 40px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
         }
 
         .timeline-event:hover {
-            background: #166fe5;
+            transform: scale(1.05);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+            z-index: 50;
+        }
+
+        .timeline-tooltip {
+            position: absolute;
+            top: -10px;
+            left: 50%;
+            transform: translateX(-50%) translateY(-100%);
+            background: rgba(0, 0, 0, 0.9);
+            color: white;
+            padding: 12px;
+            border-radius: 8px;
+            font-size: 12px;
+            white-space: nowrap;
+            z-index: 100;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease;
+            max-width: 300px;
+            white-space: normal;
+            line-height: 1.4;
+        }
+
+        .timeline-tooltip.visible {
+            opacity: 1;
+        }
+
+        .timeline-tooltip::after {
+            content: '';
+            position: absolute;
+            top: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            border: 6px solid transparent;
+            border-top-color: rgba(0, 0, 0, 0.9);
         }
 
         .stats-bar {
@@ -528,7 +650,7 @@
                 </div>
             </div>
 
-            <div class="content-area">
+            <div class="content-area" style="min-width: 0; max-width: 100%; overflow: hidden;">
                 <div class="controls-bar">
                     <div class="sort-controls">
                         <label>Sort by:</label>
@@ -553,9 +675,19 @@
                 </div>
 
                 <div class="timeline-strip" id="timelineStrip">
-                    <div class="timeline-hours" id="timelineHours">
-                        <!-- Timeline hours will be populated by JavaScript -->
+                    <div class="timeline-info" id="timelineInfo">
+                        <!-- Timeline info will be populated by JavaScript -->
                     </div>
+                    <div class="timeline-controls">
+                        <button class="timeline-control-btn" id="compressBtn">Compress</button>
+                        <button class="timeline-control-btn active" id="expandBtn">Expand</button>
+                    </div>
+                    <div class="timeline-content">
+                        <div class="timeline-hours" id="timelineHours">
+                            <!-- Timeline content will be generated by JavaScript -->
+                        </div>
+                    </div>
+                    <div class="timeline-resize-handle" id="timelineResizeHandle"></div>
                 </div>
 
                 <div class="events-grid" id="eventsGrid">
