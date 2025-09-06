@@ -225,23 +225,66 @@
         const timeText = event.time_text || event.date || '';
         const now = new Date();
         
-        // Handle "Today", "Tonight", "Tomorrow" etc.
-        if (timeText.includes('Today') || timeText.includes('Tonight')) {
-            return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        // Extract time from various formats
+        let timeMatch = null;
+        let baseDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        
+        // Handle "Today at HH:MM" or "Today at H:MM AM/PM"
+        if (timeText.includes('Today')) {
+            timeMatch = timeText.match(/(\d{1,2}):(\d{2})\s*(AM|PM)?/i) || timeText.match(/(\d{1,2})\s*(AM|PM)/i);
+            baseDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        }
+        // Handle "Tomorrow at HH:MM"
+        else if (timeText.includes('Tomorrow')) {
+            timeMatch = timeText.match(/(\d{1,2}):(\d{2})\s*(AM|PM)?/i) || timeText.match(/(\d{1,2})\s*(AM|PM)/i);
+            baseDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+        }
+        // Handle specific dates like "Mon, Dec 2 at 18:30"
+        else {
+            timeMatch = timeText.match(/(\d{1,2}):(\d{2})/i) || timeText.match(/(\d{1,2})\s*(AM|PM)/i);
+            // Try to parse the date part
+            const dateMatch = timeText.match(/(\w{3}),?\s+(\w{3})\s+(\d{1,2})/i);
+            if (dateMatch) {
+                const monthName = dateMatch[2].toLowerCase();
+                const day = parseInt(dateMatch[3]);
+                const monthMap = {
+                    'jan': 0, 'feb': 1, 'mar': 2, 'apr': 3, 'may': 4, 'jun': 5,
+                    'jul': 6, 'aug': 7, 'sep': 8, 'oct': 9, 'nov': 10, 'dec': 11
+                };
+                const month = monthMap[monthName.substring(0, 3)];
+                if (month !== undefined) {
+                    baseDate = new Date(now.getFullYear(), month, day);
+                }
+            }
         }
         
-        if (timeText.includes('Tomorrow')) {
-            const tomorrow = new Date(now);
-            tomorrow.setDate(tomorrow.getDate() + 1);
-            return tomorrow;
+        if (timeMatch) {
+            let hours = parseInt(timeMatch[1]);
+            let minutes = timeMatch[2] ? parseInt(timeMatch[2]) : 0;
+            const ampm = timeMatch[3] || timeMatch[2]; // Handle both "HH:MM AM" and "H AM" formats
+            
+            // Convert 12-hour to 24-hour format
+            if (ampm && ampm.toLowerCase().includes('pm') && hours !== 12) {
+                hours += 12;
+            } else if (ampm && ampm.toLowerCase().includes('am') && hours === 12) {
+                hours = 0;
+            }
+            
+            baseDate.setHours(hours, minutes, 0, 0);
+            return baseDate;
         }
         
-        // Try to parse other formats
+        // Fallback: try to parse the entire string
         try {
-            return new Date(timeText);
+            const parsed = new Date(timeText);
+            if (!isNaN(parsed.getTime())) {
+                return parsed;
+            }
         } catch {
-            return null;
+            // Ignore parsing errors
         }
+        
+        return baseDate; // Return date with 00:00 time if no time found
     }
 
     // Derive day bucket for event
@@ -600,6 +643,8 @@
         
         if (view === 'timeline') {
             renderTimeline();
+        } else if (view === 'map') {
+            renderMap();
         }
     }
 
@@ -678,20 +723,151 @@
         timelineHours.innerHTML = hours.map(hour => {
             const hourEvents = filteredEvents.filter(event => {
                 if (!event.start_dt) return false;
-                return new Date(event.start_dt).getHours() === hour;
+                const eventHour = new Date(event.start_dt).getHours();
+                return eventHour === hour;
             });
             
             return `
                 <div class="timeline-hour">
                     <div class="hour-label">${hour.toString().padStart(2, '0')}:00</div>
-                    ${hourEvents.map(event => `
-                        <div class="timeline-event" onclick="openEvent('${event.link}')" title="${event.title}">
-                            ${event.title.substring(0, 20)}${event.title.length > 20 ? '...' : ''}
-                        </div>
-                    `).join('')}
+                    ${hourEvents.map(event => {
+                        const eventTime = new Date(event.start_dt);
+                        const minutes = eventTime.getMinutes();
+                        const timeStr = minutes > 0 ? `${hour.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}` : '';
+                        return `
+                            <div class="timeline-event" onclick="openEvent('${event.link}')" 
+                                 title="${event.title} - ${event.when_label}"
+                                 style="background: ${eventTypes[event.type]?.color || '#9e9e9e'}">
+                                <div style="font-weight: 600; font-size: 11px;">${event.title.substring(0, 15)}${event.title.length > 15 ? '...' : ''}</div>
+                                ${timeStr ? `<div style="font-size: 9px; opacity: 0.8;">${timeStr}</div>` : ''}
+                                <div style="font-size: 9px; opacity: 0.7;">${event.neighbourhood || event.venue}</div>
+                            </div>
+                        `;
+                    }).join('')}
                 </div>
             `;
         }).join('');
+    }
+
+    // Render interactive map
+    function renderMap() {
+        const mapContainer = document.getElementById('mapContainer');
+        if (!mapContainer) return;
+        
+        // Helsinki coordinates
+        const helsinkiLat = 60.1699;
+        const helsinkiLng = 24.9384;
+        
+        // Create a simple coordinate system for events
+        const eventsWithCoords = filteredEvents.map((event, index) => {
+            // Generate pseudo-coordinates based on neighbourhood or use random positions around Helsinki
+            let lat = helsinkiLat + (Math.random() - 0.5) * 0.1; // ±0.05 degrees
+            let lng = helsinkiLng + (Math.random() - 0.5) * 0.1;
+            
+            // Adjust based on known neighbourhoods
+            const neighbourhoodCoords = {
+                'Kallio': { lat: 60.1841, lng: 24.9501 },
+                'Töölö': { lat: 60.1756, lng: 24.9066 },
+                'Punavuori': { lat: 60.1595, lng: 24.9310 },
+                'Kamppi': { lat: 60.1687, lng: 24.9316 },
+                'Kruununhaka': { lat: 60.1719, lng: 24.9525 },
+                'Ullanlinna': { lat: 60.1564, lng: 24.9489 },
+                'Katajanokka': { lat: 60.1675, lng: 24.9615 },
+                'Sörnäinen': { lat: 60.1875, lng: 24.9614 }
+            };
+            
+            if (event.neighbourhood && neighbourhoodCoords[event.neighbourhood]) {
+                const coords = neighbourhoodCoords[event.neighbourhood];
+                lat = coords.lat + (Math.random() - 0.5) * 0.01;
+                lng = coords.lng + (Math.random() - 0.5) * 0.01;
+            }
+            
+            return { ...event, lat, lng };
+        });
+        
+        // Calculate map bounds
+        const bounds = {
+            minLat: Math.min(...eventsWithCoords.map(e => e.lat)) - 0.01,
+            maxLat: Math.max(...eventsWithCoords.map(e => e.lat)) + 0.01,
+            minLng: Math.min(...eventsWithCoords.map(e => e.lng)) - 0.01,
+            maxLng: Math.max(...eventsWithCoords.map(e => e.lng)) + 0.01
+        };
+        
+        // Convert lat/lng to pixel coordinates
+        const mapWidth = mapContainer.offsetWidth;
+        const mapHeight = mapContainer.offsetHeight;
+        
+        const latRange = bounds.maxLat - bounds.minLat;
+        const lngRange = bounds.maxLng - bounds.minLng;
+        
+        mapContainer.innerHTML = `
+            <div style="position: absolute; top: 10px; left: 10px; background: rgba(255,255,255,0.9); padding: 8px 12px; border-radius: 6px; font-size: 12px; font-weight: 600; z-index: 100;">
+                📍 Helsinki Events Map (${eventsWithCoords.length} events)
+            </div>
+            <div style="position: absolute; top: 10px; right: 10px; background: rgba(255,255,255,0.9); padding: 8px 12px; border-radius: 6px; font-size: 11px; z-index: 100;">
+                <div style="margin-bottom: 4px; font-weight: 600;">Legend:</div>
+                ${Object.entries(eventTypes).slice(0, 6).map(([type, config]) => `
+                    <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 2px;">
+                        <div style="width: 12px; height: 12px; background: ${config.color}; border-radius: 50%; border: 2px solid white;"></div>
+                        <span>${config.label}</span>
+                    </div>
+                `).join('')}
+            </div>
+            ${eventsWithCoords.map(event => {
+                const x = ((event.lng - bounds.minLng) / lngRange) * mapWidth;
+                const y = ((bounds.maxLat - event.lat) / latRange) * mapHeight;
+                
+                return `
+                    <div class="map-pin" 
+                         style="
+                            position: absolute;
+                            left: ${x - 8}px;
+                            top: ${y - 8}px;
+                            width: 16px;
+                            height: 16px;
+                            background: ${eventTypes[event.type]?.color || '#9e9e9e'};
+                            border: 2px solid white;
+                            border-radius: 50%;
+                            cursor: pointer;
+                            box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+                            transition: all 0.2s ease;
+                            z-index: 10;
+                         "
+                         title="${event.title} - ${event.venue}"
+                         onclick="openEvent('${event.link}')"
+                         onmouseover="this.style.transform='scale(1.5)'; this.style.zIndex='20'"
+                         onmouseout="this.style.transform='scale(1)'; this.style.zIndex='10'">
+                    </div>
+                `;
+            }).join('')}
+            
+            <!-- Neighbourhood labels -->
+            ${Object.entries({
+                'Kallio': { lat: 60.1841, lng: 24.9501 },
+                'Töölö': { lat: 60.1756, lng: 24.9066 },
+                'Punavuori': { lat: 60.1595, lng: 24.9310 },
+                'Kamppi': { lat: 60.1687, lng: 24.9316 }
+            }).map(([name, coords]) => {
+                const x = ((coords.lng - bounds.minLng) / lngRange) * mapWidth;
+                const y = ((bounds.maxLat - coords.lat) / latRange) * mapHeight;
+                
+                return `
+                    <div style="
+                        position: absolute;
+                        left: ${x - 30}px;
+                        top: ${y + 20}px;
+                        background: rgba(0,0,0,0.7);
+                        color: white;
+                        padding: 2px 6px;
+                        border-radius: 4px;
+                        font-size: 10px;
+                        font-weight: 500;
+                        pointer-events: none;
+                        z-index: 5;
+                    ">${name}</div>
+                `;
+            }).join('')}
+        `;
     }
 
     // Update statistics
