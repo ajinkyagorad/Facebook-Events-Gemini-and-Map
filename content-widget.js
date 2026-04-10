@@ -730,48 +730,22 @@
       console.error('Status update error:', error);
     }
   }
-  
+
   function updateEventsList() {
     const eventsList = document.getElementById('events-list');
     if (!eventsList) return;
-    
-    if (storedEvents.length === 0) {
-      eventsList.innerHTML = '<div style="text-align: center; color: #65676b; padding: 20px;">No events yet<br><small>Click extract button</small></div>';
-      return;
-    }
-    
-    eventsList.innerHTML = storedEvents.map((event, index) => {
-      // Improved data extraction with fallbacks
-      let displayTitle = event.title || 'Untitled Event';
-      let displayDate = event.date || event.time_text || 'Date TBD';
-      let displayTime = event.time || '';
-      let displayLocation = event.location || 'Location TBD';
-      let displayDescription = '';
-      
-      // If we have time_text but no separate date/time, parse it better
-      if (event.time_text && !event.date && !event.time) {
-        displayDate = event.time_text;
-      }
-      
-      // Create a clean description from available data
-      if (event.description) {
-        displayDescription = event.description.length > 100 ? 
-          event.description.substring(0, 100) + '...' : event.description;
-      } else {
-        // Fallback: create description from other fields
-        const parts = [];
-        if (displayDate !== 'Date TBD') parts.push(displayDate);
-        if (displayTime) parts.push(displayTime);
-        if (displayLocation !== 'Location TBD') parts.push(displayLocation);
-        displayDescription = parts.join(' • ');
-      }
-      
+
+    const html = storedEvents.map(event => {
+      const displayTitle = event.title || event.event_name || 'Untitled Event';
+      const displayDate = event.date || event.time_text || '';
+      const displayTime = event.time || '';
+      const displayLocation = event.location?.query_string || event.location || '';
+      const displayDescription = event.description || '';
       const interestedCount = event.interested_count || 0;
       const goingCount = event.going_count || 0;
-      
+
       return `
-        <div class="event-item" data-event-url="${event.url}" data-event-index="${index}" style="
-          margin-bottom: 8px;
+        <div class="event-item" data-event-url="${event.url}" style="
           padding: 12px;
           background: rgba(255,255,255,0.95);
           border-radius: 8px;
@@ -791,7 +765,7 @@
             line-height: 1.3;
             word-wrap: break-word;
           ">${displayTitle}</div>
-          
+
           <!-- Date & Time Section -->
           <div style="
             color: #1877f2;
@@ -806,7 +780,7 @@
             <span>${displayDate}</span>
             ${displayTime ? `<span style="margin-left: 8px;">🕒 ${displayTime}</span>` : ''}
           </div>
-          
+
           <!-- Location Section -->
           <div style="
             color: #65676b;
@@ -819,7 +793,7 @@
             <span>📍</span>
             <span style="word-wrap: break-word;">${displayLocation}</span>
           </div>
-          
+
           <!-- Description Section -->
           ${displayDescription ? `
           <div style="
@@ -831,7 +805,7 @@
             font-style: italic;
           ">${displayDescription}</div>
           ` : ''}
-          
+
           <!-- Engagement Section -->
           ${(interestedCount > 0 || goingCount > 0) ? `
           <div style="
@@ -850,7 +824,9 @@
         </div>
       `;
     }).join('');
-    
+
+    eventsList.innerHTML = html;
+
     // Add click handlers without inline events
     eventsList.querySelectorAll('.event-item').forEach(item => {
       item.addEventListener('click', () => {
@@ -2290,18 +2266,18 @@ Please provide a helpful response about the events. Use markdown formatting for 
   // Initialize
   function init() {
     if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', createWidget);
+      document.addEventListener('DOMContentLoaded', () => setTimeout(createWidget, 2000));
     } else {
-      createWidget();
+      setTimeout(createWidget, 2000);
     }
-    
+
     // Add welcome message to chat
     setTimeout(() => {
       const chatMessages = document.getElementById('chat-messages');
       if (chatMessages && chatMessages.children.length === 0) {
         addWelcomeMessage();
       }
-    }, 1000);
+    }, 3000);
   }
   
   init();
