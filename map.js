@@ -58,20 +58,21 @@ class EventsMap {
     }
 
     initMap() {
-        // Initialize Leaflet map
-        this.map = L.map('map').setView([60.1699, 24.9384], 11); // Helsinki default
-
-        // Add OpenStreetMap tiles
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '© OpenStreetMap contributors'
-        }).addTo(this.map);
+        // Initialize Google Maps
+        this.map = new google.maps.Map(document.getElementById('map'), {
+            center: { lat: 60.1699, lng: 24.9384 }, // Helsinki default
+            zoom: 11,
+            mapTypeControl: true,
+            streetViewControl: true,
+            fullscreenControl: true
+        });
 
         // Add events to map
         this.addEventsToMap();
     }
 
     async addEventsToMap() {
-        const bounds = [];
+        const bounds = new google.maps.LatLngBounds();
         
         for (const event of this.events) {
             if (event.location) {
@@ -80,7 +81,7 @@ class EventsMap {
                     if (coords) {
                         const marker = this.createEventMarker(event, coords);
                         this.markers.push(marker);
-                        bounds.push(coords);
+                        bounds.extend(coords);
                     }
                 } catch (error) {
                     console.warn(`Failed to geocode location for event ${event.id}:`, error);
@@ -89,26 +90,29 @@ class EventsMap {
         }
 
         // Fit map to show all markers
-        if (bounds.length > 0) {
-            this.map.fitBounds(bounds, { padding: [20, 20] });
+        if (!bounds.isEmpty()) {
+            this.map.fitBounds(bounds);
         }
     }
 
     async geocodeLocation(location) {
-        // Simple geocoding using Nominatim (OpenStreetMap)
-        try {
-            const response = await fetch(
-                `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(location + ', Finland')}&limit=1`
-            );
-            const data = await response.json();
+        return new Promise((resolve) => {
+            const geocoder = new google.maps.Geocoder();
             
-            if (data && data.length > 0) {
-                return [parseFloat(data[0].lat), parseFloat(data[0].lon)];
-            }
-        } catch (error) {
-            console.warn('Geocoding failed:', error);
-        }
-        return null;
+            geocoder.geocode({ 
+                address: location + ', Finland',
+                componentRestrictions: { country: 'FI' }
+            }, (results, status) => {
+                if (status === google.maps.GeocoderStatus.OK && results[0]) {
+                    const lat = results[0].geometry.location.lat();
+                    const lng = results[0].geometry.location.lng();
+                    resolve({ lat, lng });
+                } else {
+                    console.warn('Geocoding failed for location:', location, status);
+                    resolve(null);
+                }
+            });
+        });
     }
 
     createEventMarker(event, coords) {
@@ -121,12 +125,18 @@ class EventsMap {
         popupContent.querySelector('.popup-description').textContent = event.description;
         popupContent.querySelector('.popup-link').href = event.url;
 
-        const marker = L.marker(coords)
-            .addTo(this.map)
-            .bindPopup(popupContent.querySelector('.popup-content').outerHTML);
+        const infowindow = new google.maps.InfoWindow({
+            content: popupContent.querySelector('.popup-content').outerHTML
+        });
 
-        // Add click handler to highlight in sidebar
-        marker.on('click', () => {
+        const marker = new google.maps.Marker({
+            position: coords,
+            map: this.map,
+            title: event.title
+        });
+
+        marker.addListener('click', () => {
+            infowindow.open(this.map, marker);
             this.highlightEventInSidebar(event.id);
         });
 
@@ -441,13 +451,14 @@ class EventsMap {
     showEventOnMap(event) {
         // Switch to map view
         this.showView('map');
-        
+
         // Find the marker for this event and center on it
         // This is a simplified approach - in a real implementation you'd store event IDs with markers
         if (this.markers.length > 0) {
             const randomMarker = this.markers[Math.floor(Math.random() * this.markers.length)];
-            this.map.setView(randomMarker.getLatLng(), 15);
-            randomMarker.openPopup();
+            this.map.setCenter(randomMarker.getPosition());
+            this.map.setZoom(15);
+            // Note: Google Maps doesn't have a built-in popup method like Leaflet
         }
     }
 
@@ -456,14 +467,14 @@ class EventsMap {
             this.addAIMessage(response.message);
             return;
         }
-        
+
         // Add the AI message
         this.addAIMessage(response.message, response.events || []);
     }
 
     showTypingIndicator() {
         const messagesContainer = document.getElementById('chat-messages');
-        
+
         const typingDiv = document.createElement('div');
         typingDiv.className = 'typing-indicator';
         typingDiv.id = 'typing-indicator';
@@ -475,7 +486,7 @@ class EventsMap {
                 <div class="typing-dot"></div>
             </div>
         `;
-        
+
         messagesContainer.appendChild(typingDiv);
         messagesContainer.scrollTop = messagesContainer.scrollHeight;
     }
@@ -486,9 +497,22 @@ class EventsMap {
             typingIndicator.remove();
         }
     }
+
+    initMap() {
+        // Initialize map here
+    }
+}
+
+// Global function for Google Maps callback
+let eventsMapInstance = null;
+
+function initMap() {
+    if (eventsMapInstance) {
+        eventsMapInstance.initMap();
+    }
 }
 
 // Initialize the app when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
-    new EventsMap();
+    eventsMapInstance = new EventsMap();
 });
