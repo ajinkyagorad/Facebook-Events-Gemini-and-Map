@@ -875,24 +875,56 @@
         total_events: storedEvents.length,
         extracted_at: new Date().toISOString(),
         source_url: window.location.href,
-        events: storedEvents.map((event, index) => ({
-          index: index + 1,
-          id: event.id,
-          name: event.title || event.event_name || 'Untitled Event',
-          organizer: event.organizer || '',
-          date: event.date || event.time_text || '',
-          time_text: event.time_text || '',
-          start_timestamp: event.start_ts || event.start_timestamp || null,
-          location: event.location || {
+        events: storedEvents.map((event, index) => {
+          // Build location object with components
+          let locationObj = {
             query_string: '',
             google_maps_link: '',
             components: { street: '', postal_code: '', city: '', country: '' }
-          },
-          image_url: event.image_url || '',
-          interested_count: event.interested_count || 0,
-          going_count: event.going_count || 0,
-          url: event.url || ''
-        }))
+          };
+
+          if (event.location) {
+            if (typeof event.location === 'string') {
+              // Legacy location as string - parse it
+              locationObj.query_string = event.location;
+              locationObj.google_maps_link = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(event.location)}`;
+
+              // Try to parse components
+              const streetMatch = event.location.match(/^([^,]+?)\s*,\s*(\d{5})/);
+              if (streetMatch) {
+                locationObj.components.street = streetMatch[1].trim();
+                locationObj.components.postal_code = streetMatch[2];
+              } else {
+                const simpleStreet = event.location.match(/^([A-Za-zäöåÄÖÅ]+(?:katu|tie|polku|kuja|tori)\s+\d+)/i);
+                if (simpleStreet) locationObj.components.street = simpleStreet[1];
+                const postalMatch = event.location.match(/(\d{5})/);
+                if (postalMatch) locationObj.components.postal_code = postalMatch[1];
+              }
+              if (event.location.includes('Helsinki')) {
+                locationObj.components.city = 'Helsinki';
+                locationObj.components.country = 'Finland';
+              }
+            } else if (typeof event.location === 'object') {
+              // Already structured location object
+              locationObj = event.location;
+            }
+          }
+
+          return {
+            index: index + 1,
+            id: event.id,
+            name: event.title || event.event_name || 'Untitled Event',
+            organizer: event.organizer || '',
+            date: event.date || event.time_text || '',
+            time_text: event.time_text || '',
+            start_timestamp: event.start_ts || event.start_timestamp || null,
+            location: locationObj,
+            image_url: event.image_url || '',
+            interested_count: event.interested_count || event.attendance?.interested || 0,
+            going_count: event.going_count || event.attendance?.going || 0,
+            url: event.url || ''
+          };
+        })
       };
 
       // Copy JSON to clipboard
