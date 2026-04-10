@@ -743,6 +743,7 @@
       const displayDescription = event.description || '';
       const interestedCount = event.interested_count || 0;
       const goingCount = event.going_count || 0;
+      const imageUrl = event.image_url || '';
 
       return `
         <div class="event-item" data-event-url="${event.url}" style="
@@ -756,6 +757,21 @@
           line-height: 1.4;
           box-shadow: 0 1px 3px rgba(0,0,0,0.1);
         ">
+          ${imageUrl ? `
+          <!-- Image Section -->
+          <div style="
+            margin-bottom: 10px;
+            text-align: center;
+          ">
+            <img src="${imageUrl}" alt="Event image" style="
+              max-width: 100%;
+              height: 120px;
+              object-fit: cover;
+              border-radius: 6px;
+              box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            " onerror="this.style.display='none'">
+          </div>
+          ` : ''}
           <!-- Title Section -->
           <div style="
             font-weight: 600;
