@@ -1353,6 +1353,7 @@
       location: '',
       interested_count: 0,
       going_count: 0,
+      image_url: '',
       description: ''
     };
     
@@ -1420,7 +1421,14 @@
     }
     
     console.log('Counts:', { interested: eventData.interested_count, going: eventData.going_count });
-    
+
+    // Extract image URL from img elements in the card
+    const img = cardElement.querySelector('img');
+    if (img && img.src && !img.src.includes('emoji') && !img.src.includes('static.xx.fbcdn.net/rsrc.php')) {
+      eventData.image_url = img.src;
+      console.log('Image URL found:', eventData.image_url);
+    }
+
     // Extract location by removing known elements from text
     let locationText = text;
     
