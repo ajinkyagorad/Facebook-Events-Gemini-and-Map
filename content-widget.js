@@ -864,51 +864,50 @@
   async function copyAllEvents() {
     const copyBtn = document.getElementById('copy-all-events');
     if (!copyBtn || storedEvents.length === 0) return;
-    
+
     const originalText = copyBtn.innerHTML;
     copyBtn.disabled = true;
     copyBtn.innerHTML = '⏳ Copying...';
-    
+
     try {
-      // Format events as readable text
-      const eventsText = storedEvents.map((event, index) => {
-        const title = event.title || 'Untitled Event';
-        const date = event.date || event.time_text || 'Date TBD';
-        const time = event.time || '';
-        const location = event.location || 'Location TBD';
-        const description = event.description || '';
-        const url = event.url || '';
-        
-        let eventText = `${index + 1}. ${title}\n`;
-        eventText += `   📅 ${date}${time ? ` at ${time}` : ''}\n`;
-        eventText += `   📍 ${location}\n`;
-        if (description) {
-          eventText += `   📝 ${description.substring(0, 200)}${description.length > 200 ? '...' : ''}\n`;
-        }
-        if (url) {
-          eventText += `   🔗 ${url}\n`;
-        }
-        
-        const interestedCount = event.interested_count || 0;
-        const goingCount = event.going_count || 0;
-        if (interestedCount > 0 || goingCount > 0) {
-          eventText += `   👥 ${interestedCount} interested, ${goingCount} going\n`;
-        }
-        
-        return eventText;
-      }).join('\n');
-      
-      const fullText = `Facebook Events (${storedEvents.length} events)\n${'='.repeat(40)}\n\n${eventsText}\n\nExtracted on ${new Date().toLocaleString()}`;
-      
-      // Copy to clipboard
-      await navigator.clipboard.writeText(fullText);
-      
-      copyBtn.innerHTML = '✅ Copied!';
+      // Convert stored events to the same format as console extractor
+      const eventsData = {
+        total_events: storedEvents.length,
+        extracted_at: new Date().toISOString(),
+        source_url: window.location.href,
+        events: storedEvents.map((event, index) => ({
+          index: index + 1,
+          id: event.id,
+          name: event.title || event.event_name || 'Untitled Event',
+          organizer: event.organizer || '',
+          date: event.date || event.time_text || '',
+          time_text: event.time_text || '',
+          start_timestamp: event.start_ts || event.start_timestamp || null,
+          location: event.location || {
+            query_string: '',
+            google_maps_link: '',
+            components: { street: '', postal_code: '', city: '', country: '' }
+          },
+          image_url: event.image_url || '',
+          interested_count: event.interested_count || 0,
+          going_count: event.going_count || 0,
+          url: event.url || ''
+        }))
+      };
+
+      // Copy JSON to clipboard
+      await navigator.clipboard.writeText(JSON.stringify(eventsData, null, 2));
+
+      copyBtn.innerHTML = '✅ JSON Copied!';
+      console.log('📋 Full JSON copied to clipboard!');
+      console.log(`💾 File size: ${(JSON.stringify(eventsData).length / 1024).toFixed(2)} KB`);
+      console.log('Type "eventsData" to access the data in console.');
+
       setTimeout(() => {
         copyBtn.innerHTML = originalText;
         copyBtn.disabled = false;
       }, 2000);
-      
+
     } catch (error) {
       console.error('Copy error:', error);
       copyBtn.innerHTML = '❌ Failed';
